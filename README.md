@@ -39,7 +39,7 @@ Test split, cold items only, hashtag noise on 40% of cold items, mean over seeds
 | Noisy text, VGR | 0.0701 | 0.0319 |
 | Noisy text, shuffled-cosine control | 0.0684 | 0.0313 |
 
-The published Baby numbers (Rec@20 0.0771, NDCG@20 0.0363) are listed separately in the report. VGR recovers about a third of the Recall@20 lost to the noise in all three seeds, and about half of that gain is also obtained by a control that does not use the image. Details, controls and failure analysis: `docs/report/report.tex`, section VII.
+The published Baby numbers (Rec@20 0.0771, NDCG@20 0.0363) are listed separately in the report. VGR recovers about a third of the Recall@20 lost to the noise in all three seeds, and about half of that gain is also obtained by a control that does not use the image. 95% bootstrap intervals over test users, Success@K and MRR are in `results/ranking_metrics.md` (`python -m mamex_robustness.reporting.ranking_metrics`). The Recall@20 gain of VGR over the noisy model is +0.0033 [0.0024, 0.0044] and over the shuffled control +0.0017 [0.0011, 0.0023]; on clean text VGR costs about 0.0004 Recall@20 (interval includes 0) and 0.0002 NDCG@20 (interval just excludes 0). The intervals cover test-user sampling, not training-seed variance. Details, controls and failure analysis: `docs/report/report.tex`, section VII.
 
 ## Literature
 `docs/literature.md`, `docs/references.bib`.
