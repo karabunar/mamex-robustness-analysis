@@ -16,7 +16,7 @@ def compute_ranking_metrics(testusers, testdata, traindata, topk_list, user_rank
         one_metrics = []
         test_items = testdata[i]
         pos_length = len(test_items)
-        # pred_items找出ranking结果中排除训练样本的前topk个items
+        # pred_items: the top-k items of the ranking after excluding training items
         mask_items = traindata[i]
         pred_items_all = user_rank_pred_items[u]
         max_length_candicate = len(mask_items) + topk_list[-1]

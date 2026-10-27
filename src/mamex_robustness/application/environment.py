@@ -6,17 +6,17 @@ import numpy as np
 import torch
 from tensorboardX import SummaryWriter
 
-import tool
+from mamex_robustness import tool
 
 
 class Env(object):
     def __init__(self, args):
         """
-        初始化环境
+        Initialize the environment
         :param args:
         """
         self.args = args
-        self.DATA_PATH = 'baby' # data path
+        self.DATA_PATH = getattr(args, 'data_path', 'baby') # data path
         self.ROOT_PATH = './' # code path
 
         self.DATA_PATH = os.path.join(self.DATA_PATH)

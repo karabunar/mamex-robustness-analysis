@@ -1,0 +1,11 @@
+# Versions used for the reported runs (Python 3.13.9, CUDA 12.8 build of PyTorch).
+# Install the CUDA/CPU wheel of torch that matches your machine from https://pytorch.org
+torch==2.9.1
+numpy==2.3.5
+scipy==1.16.3
+numba==0.68.0
+faiss-cpu==1.15.1
+tensorboardX==2.6.5
+tqdm==4.67.1
+matplotlib==3.11.2
+pytest==9.0.3

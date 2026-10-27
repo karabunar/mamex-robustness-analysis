@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.npy
+*.pth
+exp_report/
+baby/
+.env*
+.pytest_cache/
+*.egg-info/
+processed_data_baby/
+*.pt
+docs/presentation_outline.md

@@ -15,23 +15,23 @@ def get_logger(log_name, log_file, level=logging.INFO):
 
 class Log(object):
     def __init__(self, log_name, log_file, level=logging.INFO):
-        # 文件的命名
+        # log file name
         logging.basicConfig()
         self.logger = logging.getLogger(log_name)
         self.logger.setLevel(level)
         self.log_file = log_file
         self.logger.propagate = False
-        # 日志输出格式
+        # log output format
         self.formatter = logging.Formatter('%(asctime)s : %(message)s', "%Y-%m-%d %H:%M:%S")
  
     def __console(self, level, message):
-        # 创建一个FileHandler，用于写到本地
-        fh = logging.FileHandler(self.log_file, 'a', encoding='utf-8')  # 这个是python3的
+        # create a FileHandler to write to the local file
+        fh = logging.FileHandler(self.log_file, 'a', encoding='utf-8')  # python3 only
         fh.setLevel(logging.INFO)
         fh.setFormatter(self.formatter)
         self.logger.addHandler(fh)
  
-        # 创建一个StreamHandler,用于输出到控制台
+        # create a StreamHandler to print to the console
         ch = logging.StreamHandler()
         ch.setLevel(logging.ERROR)
         ch.setFormatter(self.formatter)
@@ -45,10 +45,10 @@ class Log(object):
             self.logger.warning(message)
         elif level == 'error':
             self.logger.error(message)
-        # 这两行代码是为了避免日志输出重复问题
+        # these two lines avoid duplicated log output
         self.logger.removeHandler(ch)
         self.logger.removeHandler(fh)
-        # 关闭打开的文件
+        # close the opened file
         fh.close()
  
     def debug(self, message):
@@ -133,3 +133,13 @@ def save_model(model, model_dir, current_epoch, last_best_epoch=None):
         if os.path.exists(old_model_state_file):
             os.system('rm {}'.format(old_model_state_file))
 
+
+def apply_mode_defaults(args):
+    """Fill mode-dependent defaults: VGR on for 'improved', no noise for 'baseline', noise_seed = seed."""
+    if args.use_vgr is None:
+        args.use_vgr = 1 if args.mode == 'improved' else 0
+    if args.mode == 'baseline':
+        args.noise_rate = 0.0
+    if args.noise_seed is None:
+        args.noise_seed = args.seed
+    return args

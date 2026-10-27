@@ -1,0 +1,540 @@
+% YZM 5110 Multimodal Learning, Project 1 -- research report (IEEE conference format)
+% Build: pdflatex report (twice, so the citation numbers resolve)
+% Needs IEEEtran.cls (TeX Live package texlive-publishers). The bibliography is embedded: no bibtex run needed.
+% Figures are drawn with pgfplots from the table values: the file needs no other uploads.
+\documentclass[conference]{IEEEtran}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.16}
+\definecolor{cBlue}{HTML}{2B7BD6}
+\definecolor{cOrange}{HTML}{EC6B35}
+\definecolor{cGreen}{HTML}{1BAF7A}
+\usepackage[hidelinks]{hyperref}
+
+\sloppy
+\emergencystretch=2em
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+
+\begin{document}
+
+\title{Does MAMEX's Modality Gate Trust Corrupted Text?\\
+A Stress Test and a Visual-Grounding Fix}
+
+\author{\IEEEauthorblockN{Hatice Sebla Karabunar}
+\IEEEauthorblockA{YZM 5110 Multimodal Learning, Project 1 (Dr.\ Ekrem \c{C}etinkaya), November 2026\\
+Repository: \url{https://github.com/karabunar/mamex-robustness-analysis}\\
+Commit / tag: \texttt{v1.0} (to be set at submission)\\
+AI use: disclosed in Appendix~\ref{app:ai}}}
+
+\maketitle
+
+\begin{abstract}
+MAMEX is a cold-start recommender that lets an adaptive gate weight an image expert and a text expert. We ask what the gate does when an item's text is present but misleading. On Amazon Baby, we reproduce the MAMEX baseline from the released code (Recall@20 0.0776, NDCG@20 0.0365, against 0.0771 and 0.0363 published; Recall@10 is about 0.0025 below the published value (0.0024 with ten seeds) and neither ten seeds nor the scale of the alignment loss closes that gap). We then corrupt the text of 40\% of the cold items at test time. Recall@20 falls by 14\% and the gate does not move away from text. A parameter-free correction, Visual Grounding Regularization (VGR), which scales the text weight by the image--text cosine similarity, recovers 27--38\% of the loss at no measurable clean-data cost, but about half of that gain is also obtained by two controls that ignore the image. The result is a modest fix, not a solution. Separately, we document that the distributed Baby features are probably not the CLIP features the paper describes (Section~\ref{sec:repro}); this is a finding about the source, not an explanation of the gap.
+\end{abstract}
+
+\begin{IEEEkeywords}
+cold-start recommendation, multimodal recommendation, mixture of experts, robustness, reproducibility
+\end{IEEEkeywords}
+
+%====================================================================
+\section{Research Question, Scope, Contributions}
+
+\textbf{Question.} MAMEX~\cite{nguyen2025mamex} builds cold-item embeddings by letting an adaptive gate weight an image expert and a text expert. When an item's text is present but misleading (clickbait-like), does the gate keep trusting it, and can a parameter-free image--text agreement signal reduce the damage without hurting clean accuracy?
+
+\textbf{Scope.} Amazon Baby, item cold-start (7,050 items, 1,410 cold, 19,442 training users). Text is corrupted at test time only, at the embedding level, on a share of the cold items. One model family, one fix, three training seeds. Not in scope: other datasets, real clickbait text, other cold-start models.
+
+\textbf{Motivation.} None of the papers surveyed in Section~\ref{sec:lit} reports performance when a modality is present but misleading.
+
+\textbf{Contributions.} (1)~a measured reproduction of the MAMEX Baby baseline on the distributed data, with an investigation of the remaining gap; (2)~a stress-test protocol for corrupted cold-item text; (3)~VGR with two controls that isolate where its effect comes from; (4)~a failure analysis of whom VGR helps and hurts; (5)~a test-driven, packaged codebase with exact commands.
+
+Every number below is either measured in the experiments of Section~\ref{sec:design} or taken from a cited paper. What a paper reports is attributed to it; an inference is marked as our reading.
+
+%====================================================================
+\section{Literature Search and Critical Synthesis}
+\label{sec:lit}
+
+\subsection{How the papers were found}
+
+\textbf{Procedure.} Web search on 2026-10-16, one query per paper by title (VBPR, MMGCN, ``Contrastive Learning for Cold-Start Recommendation'', MoToRec, MAMEX) and topic queries (``multimodal cold-start recommendation adaptive mixture of experts'', ``multimodal tokenization cold-start''). DGMRec surfaced while looking for follow-ups. This is a targeted selection, not a systematic review: no keyword searches were run over Google Scholar, DBLP or the ACM Digital Library.
+
+\textbf{Selection criteria.} (a)~the paper that introduced the base idea (VBPR: content features for ranking and cold items; MMGCN: per-modality graph propagation); (b)~the paper being reproduced (MAMEX); (c)~competing cold-start approaches with a different philosophy (CLCRec: contrastive alignment; MoToRec: discrete tokens); (d)~work on a related failure mode (DGMRec: missing modalities). Five papers form the matrix; DGMRec is a sixth, supporting one. All six were read in full, as a PDF or as the HTML version, and each matrix row was checked against the full text.
+
+\subsection{Comparison}
+
+Table~\ref{tab:lit} compares the six papers on the points that matter for our question. The seven-field matrix required by the course is in Appendix~\ref{app:matrix}.
+
+\begin{table*}[!t]
+\centering\footnotesize
+\caption{Condensed comparison. Results are as reported by each paper; the cold-start definitions differ, so the numbers are not comparable across rows.}
+\label{tab:lit}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\textwidth}{@{}p{1.9cm}p{2.5cm}XXXp{2.4cm}@{}}
+\toprule
+Paper & Cold-start definition & Modalities and fusion & Split and metrics & Strongest reported evidence & Misleading input tested? \\
+\midrule
+VBPR~\cite{he2016vbpr} & items with $<5$ training positives & image (4096-d CNN fc7) as extra factors in BPR-MF & one random item per user for val/test; AUC & Women, cold-start AUC 0.6813 vs 0.5281 for BPR-MF & no (image only) \\
+MMGCN~\cite{wei2019mmgcn} & none: items must be in the graph & visual, acoustic, text; one GCN per modality, representations summed & random 8:1:1 over interactions; Recall, NDCG@10 & Recall +8.76 to +15.59\% over the best baseline & no (the paper calls Kwai/Tiktok text ``noisy, incomplete, and even irrelevant'' but does not test it) \\
+CLCRec~\cite{wei2021clcrec} & complete cold start (items unseen in training) & visual, acoustic, text; contrastive mutual-information objectives, content encoder scores cold items & items split 1:1 into val/test; Recall, NDCG@10 & gains over DUIF, DropoutNet, MTPR, CB2CF, Heater, single runs & no \\
+MoToRec~\cite{liu2026motorec} & items with $<10$ training interactions & BEiT image, BGE text; discrete tokens (sparsity-regularised RQ-VAE) and LightGCN & random 8:1:1 over interactions; R, N@\{10,20\} & Baby cold-start R@20 0.0347 & no (argues noisy embeddings hurt but does not corrupt inputs) \\
+MAMEX~\cite{nguyen2025mamex} & complete item cold start & CLIP image and text (as stated); linear-expert MoE and sparse gate & 8:1:1 by item; Rec, NDCG@\{10,20\} & Baby Rec@20 0.0771, NDCG@20 0.0363 & no (clean features only) \\
+DGMRec~\cite{kim2025dgmrec} & missing modalities; new items & CNN image, SBERT text (TikTok adds audio); disentangle, then generate the missing feature & 8:1:1; Recall, NDCG@\{20,50\} & at 80\% missing, drops 10.2\% vs 15.1\% for the baseline compared & missing: yes; misleading: no \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\subsection{Synthesis (our reading)}
+
+\begin{enumerate}
+\item \textbf{The papers share a pipeline.} All recommendation papers use frozen, pre-extracted content features and learn only what sits on top. Content helps items with little or no history (VBPR's cold-start AUC gain; MAMEX's multimodal-over-single-modality ablation). Text tends to be the stronger modality on Amazon (MAMEX's ablation), which makes it the natural shortcut.
+\item \textbf{The reported numbers cannot be compared.} VBPR calls an item cold below 5 positives, MoToRec below 10 interactions, CLCRec and MAMEX when it has none. MoToRec reports Baby R@20 0.0347 on its cold group and 0.1077 overall; MAMEX reports Baby Rec@20 0.0771 under a different protocol. MMGCN and MoToRec split interactions at random, which cannot evaluate cold items; MAMEX and CLCRec split by item.
+\item \textbf{A methodological disagreement is untested.} MoToRec argues that aligning continuous embeddings creates noise and uses discrete tokens; MAMEX stays continuous and relies on a gate. Neither corrupts its inputs, so neither claim about robustness is evidence.
+\item \textbf{Reproducibility is uneven.} MAMEX, MoToRec and VBPR leave key settings or code links unstated. MAMEX does not give batch size, epochs, embedding size or hardware. CLCRec releases code but reports single runs.
+\item \textbf{The gap.} The only paper that studies a failing modality, DGMRec, treats it as absent, and assumes the features that are present are correct. None of the six papers tests a modality that is present but misleading (the search was targeted, so other work may exist). That is the question this project asks of MAMEX's gate, using VGR as a candidate fix.
+\end{enumerate}
+
+%====================================================================
+\section{The Method: MAMEX as Implemented}
+
+We read the model implementation of the reproduced code, then checked it against the paper's equations (last item).
+\begin{itemize}
+\item Frozen pre-extracted image and text features, each L2-normalised, pass through a separate mixture-of-experts layer (4 linear experts, top-2 chosen by a learned gate, softmax over the two selected logits), giving a 128-d embedding per modality and a load-balancing loss.
+\item The two embeddings are concatenated and passed to a fusion gate (an MLP with ReLU and dropout) with two outputs; a softmax gives $[w_v, w_t]$. The item embedding is $w_v e_{\text{img}} + w_t e_{\text{txt}}$.
+\item User embeddings are free parameters. The loss is BPR, plus L2 regularisation, an alignment term (MSE between the item embedding and each modality embedding), the expert balance loss, and a KL term keeping the mean fusion gate near uniform. Coefficients are the repository defaults (align 1, reg $10^{-6}$, moe\_balance 1, fusion\_balance 1).
+\item Cold items are scored by the inner product of the user embedding with an item embedding built only from their modality features.
+\item \emph{Against the paper} (arXiv 2508.08042v1, Eqs.~3--11). The MoE adapter (Eq.~3), BPR loss (Eq.~10), alignment loss (Eq.~8), KL balance term (Eq.~7) and loss sum (Eq.~11) match the code in structure. Two differences in detail: (1)~Eq.~5 describes a \emph{sparse} softmax gate over the concatenated embeddings, while the code uses a small MLP and an ordinary softmax over two outputs; the two agree unless the paper's sparsity keeps only one modality, which the paper does not say. (2)~The text after Eq.~8 calls the alignment loss an MSE, but the equation is a squared L2 norm; the code uses the mean squared error, smaller by a factor equal to the embedding size (128). The paper's weight $\lambda_1 \in \{1, 0.1, 0.01\}$ does not say which scale it refers to. The expert-balance term (Eq.~4) was not checked line by line.
+\end{itemize}
+
+%====================================================================
+\section{Reproduction Target, Implementation, Deviations}
+\label{sec:repro}
+
+\textbf{Target.} Published, Amazon Baby, kept apart from measured numbers (Table~1 of the paper): Rec@10 0.0512, Rec@20 0.0771, NDCG@10 0.0292, NDCG@20 0.0363.
+
+\textbf{Implementation.} The upstream repository (commit \code{88a932e}) was restructured into a package, with characterisation tests added before the restructure and unit and end-to-end tests after (94 tests). Training and evaluation logic are unchanged. Added: test-time corruption, VGR with controls, $\gamma$ selection on validation data, the evaluation report and saved per-pair ranks.
+
+\subsection{Deviation 1: features (paper says CLIP, files probably are not)}
+
+\textbf{What the paper and the authors say.} The MAMEX paper describes CLIP features, and the repository README states ``CLIP-based feature extraction, inspired by MMSRec'' (as quoted in issue \#2 below). The authors' repository hosts only the processed Baby data. An open issue on that repository (\#2, August 2025) asks for the preprocessing steps and the raw-data source. A collaborator's reply (19 September 2025) points to the feature-extraction code in MMSRec~\cite{mmsrec} and to McAuley's raw Amazon data. The thread names no extraction script. MMSRec's README (read 2026-10-23) names CLIP as the extractor but does not give the variant or the feature dimensions, and lists Beauty, Sports, Clothing, Home and MovieLens-1M as recommendation datasets, not Baby. The pointer therefore does not by itself give a way to regenerate the Baby features.
+
+\textbf{What the distributed files contain} (measured on \code{image_feat.npy} and \code{text_feat.npy}, 7,050 items):
+\begin{itemize}
+\item Image: 4,096-d, all values $\ge 0$, 79.2\% exactly zero, row norms 36--153.
+\item Text: 1,024-d, dense and signed (values $-12.9$ to $8.1$, no zeros), row norms 23--30.
+\end{itemize}
+
+\textbf{Why this points away from CLIP} (our reading).
+\begin{itemize}
+\item \emph{Dimension.} CLIP's released image encoders output embeddings of 512 to 1,024 dimensions~\cite{radford2021clip}; none outputs 4,096. (Some encoders have wider intermediate feature maps, but a spatially pooled map would not have 79\% exact zeros; this is our reading.) The 1,024-d text dimension alone does not discriminate: both CLIP text encoders and sentence-transformers models can output it.
+\item \emph{Shape of the values.} Non-negative, 79\% sparse vectors of 4,096 dimensions are what a ReLU-gated fully connected layer of an ImageNet CNN produces (VBPR's 4096-d fc7 features~\cite{he2016vbpr} have this form); CLIP's output embeddings are dense and signed.
+\item \emph{Independent description of Baby.} LATTICE~\cite{zhang2021lattice} uses the same dataset (19,445 users, 7,050 items) with ``the 4,096-dimensional visual features that have been extracted and published'' and 1,024-d sentence-transformers text embeddings. DGMRec~\cite{kim2025dgmrec} states that its Amazon features come from ``a CNN model and SBERT''. The dimensions match the distributed files.
+\end{itemize}
+
+\textbf{What is not shown.} We cannot prove it. The item ids in the files are not mapped to Amazon ASINs, so the vectors cannot be matched to the published 2014 features, and no CLIP features were extracted for comparison (that would need the raw images and titles and the id-to-ASIN mapping). The three pieces of evidence agree, but the conclusion remains an inference.
+
+\textbf{What follows for this project.} (i)~Everything below runs on the distributed features; the reproduction target is therefore ``the released code on the released data'', not ``MAMEX on CLIP features''. (ii)~This is a finding about how well the source is documented, not an explanation of our results. We do not offer it as the cause of the Rec@10 gap: Rec@20 and NDCG@20 match the published values, and no experiment here varied the features. (iii)~The stress test and VGR are defined on embeddings and make no assumption about the extractor, but the size of the loss and of VGR's recovery may differ with other features. This is listed under limitations.
+
+\subsection{Other deviations}
+\begin{enumerate}
+\item \emph{Unstated settings.} Batch size, epochs, embedding size and hardware are not given in the paper; repository defaults are used (batch 2,048; 128-d; up to 1,000 epochs; early stop 200).
+\item \emph{Selection.} The best epoch is chosen on clean validation NDCG@10.
+\item \emph{Seeds.} Three seeds (2025--2027) for all main results; the paper's seed protocol is not stated.
+\item \emph{Reproduction criterion.} The claim tested is that the released code, trained on the distributed data, gives the published Baby numbers. It is questioned for a metric if the published value lies outside the range of the seed results. This criterion was written after the baseline had been seen, so it is not pre-registered. Table~\ref{tab:repro} applies it: three of four metrics pass and Rec@10 misses by 0.0005, so the reproduction is close but not exact. The ten-seed check in Section~\ref{sec:results} is stricter: there NDCG@10 also falls outside two standard errors of the published value. The diagnostic checks did not close the gap.
+\end{enumerate}
+
+%====================================================================
+\section{Proposed Improvement and Rationale}
+
+\textbf{Visual Grounding Regularization (VGR).} After the gate,
+\begin{equation}
+w_t' = w_t \cdot \sigma\bigl(\gamma \cos(e_{\text{img}}, e_{\text{txt}})\bigr),
+\end{equation}
+then $[w_v, w_t']$ is renormalised to sum to 1. The cosine uses the 128-d post-MoE embeddings and carries no gradient. There are no learned parameters, so VGR can be switched on or off on the same clean-trained checkpoint (the default; training with VGR is an ablation only).
+
+\textbf{Rationale} (stated before results). The alignment loss pulls the two embeddings together on clean data, so a low cosine signals that the text disagrees with the visual evidence; the sigmoid turns that into a lower text weight. A cost known in advance: $\sigma(\cdot) < 1$ always, so text is also down-weighted on clean items. This is measured, not assumed away.
+
+\textbf{Hypotheses and what would falsify them} (written on 16 October 2026, before the first full-training results of 17 October; the repository holds a single commit, so this date is our statement, not a commit timestamp).
+\begin{itemize}
+\item \textbf{H1, the failure exists.} With 40\% of cold items' text corrupted, Recall@20 and NDCG@20 fall and the gate does not shift away from text (mean $w_t$ on corrupted items stays within $\pm0.05$ of its clean value). We would doubt it if the drop is within one seed std of zero, or if $w_t$ falls by more than 0.10 (the gate already adapts). The gate sees only the post-MoE embeddings and was trained on clean data, where text and image agree, so nothing taught it that text can be confidently wrong.
+\item \textbf{H2, VGR reduces it.} On the same clean-trained checkpoint, VGR lowers $w_t$ on corrupted items and raises noisy Recall@20 and NDCG@20; expected order: clean baseline $>$ VGR (noisy) $>$ stress test. No magnitude is predicted. We would doubt it if there is no improvement or if the sign is not the same in all three seeds.
+\item \textbf{H3, the cost is small.} On clean input VGR changes Recall@20 by less than one seed std and the forward pass slows by less than 5\%. We would doubt it if the clean drop exceeds one seed std, which would mean robustness is bought with clean quality.
+\item \textbf{H4, the gain comes from grounding, not from muting text.} Two controls, shuffled cosine (each item gets another item's cosine) and constant factor (every item gets the mean VGR factor), recover less than VGR on noisy input. If either matches VGR, the benefit is only ``trust text less'' and the grounding explanation is not supported.
+\end{itemize}
+
+%====================================================================
+\section{Experimental Design}
+\label{sec:design}
+
+\begin{itemize}
+\item \textbf{Data and split.} Amazon Baby item cold-start split as distributed: cold items never appear in training; validation and test contain cold items only (705 items each, disjoint). Evaluation candidates are all 1,410 cold items.
+\item \textbf{Noise protocol} (design decision). Test time only, on cold items' text features; training and validation stay clean. This is the standard robustness protocol, the clean control is exact, and training on noisy text would let the gate learn to hide the weakness. The same seed gives the same corruption mask in every mode. \emph{Hashtag} noise (main): a corrupted item's unit text vector is mixed (weight 0.8) with one of 5 shared ``clickbait'' prototype vectors drawn from warm items, imitating text dominated by generic trending tags. Also implemented: \emph{shuffle} and \emph{gaussian}. Rate 0.4 (564 of 1,410 cold items). The noise is simulated on embeddings because only pre-extracted features exist; it is not real clickbait text.
+\item \textbf{Conditions.} Baseline (clean); stress test (noisy, no VGR); MAMEX-VGR (noisy, $\gamma$ chosen on noisy validation data from $\{1,2,4,8,16\}$ with a different mask, ties to the smaller $\gamma$); clean text with VGR; shuffled-cosine and constant-factor controls.
+\item \textbf{Metrics.} Recall, NDCG and HR at $K \in \{10,\dots,50\}$; headline Recall@20 and NDCG@20. Mean $\pm$ sample std over three seeds and per-seed paired differences. No significance test is claimed with $n=3$.
+\item \textbf{No tuning on the test set.} $\gamma$ and the best epoch use validation data only; a test-set $\gamma$ sweep is a sensitivity table reported after selection.
+\item \textbf{Cost.} Forward latency with and without VGR, GPU memory and training seconds, from the same runs.
+\item \textbf{Resources.} One RTX A4000 and an Intel i9-12900K; about 18--20 minutes of training per run when run alone. Environment, data checksums, commands and cost are in Appendix~\ref{app:record}.
+\item \textbf{Not done:} noise-augmented training.
+\end{itemize}
+
+%====================================================================
+\section{Results, Controls, Uncertainty, Failure Analysis}
+\label{sec:results}
+
+All numbers are computed from the saved per-run outputs (metrics, gate statistics, latency and per-pair ranks). Test split, cold items only, hashtag noise at rate 0.4, mean $\pm$ std over seeds 2025--2027. A repeated run of the whole core grid reproduced every saved number exactly (timing and memory excluded).
+
+\subsection{Reproduction}
+
+\begin{table}[!t]
+\centering\footnotesize
+\caption{Published vs measured clean baseline (kept apart).}
+\label{tab:repro}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+ & Rec@10 & Rec@20 & NDCG@10 & NDCG@20 \\
+\midrule
+Published & 0.0512 & 0.0771 & 0.0292 & 0.0363 \\
+Measured, 3 seeds & 0.0487 & 0.0776 & 0.0285 & 0.0365 \\
+\midrule
+Seed 2025 & 0.0507 & 0.0819 & 0.0298 & 0.0384 \\
+Seed 2026 & 0.0462 & 0.0736 & 0.0266 & 0.0341 \\
+Seed 2027 & 0.0493 & 0.0774 & 0.0293 & 0.0371 \\
+Std over seeds & 0.0023 & 0.0042 & 0.0017 & 0.0022 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The published Rec@20, NDCG@10 and NDCG@20 lie inside the seed range and within 0.001 of the mean. The published Rec@10 is 0.0005 above the largest seed value and 0.0025 above the mean, about one seed std. Two diagnostic checks, with their decision rules, were written down before they were run (the baseline was already known). They change no table in the main results.
+
+\textbf{D1, seed variation.} Rule: if the published value lies within two standard errors of the ten-seed mean, seed variation is consistent with the gap; if not, it is not enough on its own. We also report the share of seeds at or above the published value. Seven more baseline seeds (2028--2034) give ten in total. Mean $\pm$ standard error: Rec@10 $0.0488 \pm 0.0004$, Rec@20 $0.0773 \pm 0.0009$, NDCG@10 $0.0279 \pm 0.0004$, NDCG@20 $0.0358 \pm 0.0005$. The published Rec@20 and NDCG@20 lie within two standard errors of the mean; the published Rec@10 (0.0512) and NDCG@10 (0.0292) do not. None of the ten seeds reaches the published Rec@10 (best 0.0507); for NDCG@10 three of ten are at or above the published value. By the stated rule, seed variation alone does not explain the Rec@10 gap, which is about 0.0024.
+
+\textbf{D2, scale of the alignment loss.} Rule: if one weight brings mean Rec@10 within 0.001 of the published value without lowering Rec@20 or NDCG, the scale is a candidate explanation; no weight is adopted as the main baseline, because that would need a validation-based choice and a re-run of every condition. The code's MSE is 128 times smaller than the paper's squared norm, so the paper's weights $\{0.01, 0.1, 1\}$ correspond to \code{--align_coeff} $\{1.28, 12.8, 128\}$.
+
+\begin{table}[!t]
+\centering\footnotesize
+\caption{Baseline with the alignment weight varied (seeds 2025--2027, mean).}
+\label{tab:align}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\code{--align_coeff} & Rec@10 & Rec@20 & NDCG@10 & NDCG@20 \\
+\midrule
+1 (default, main) & 0.0487 & 0.0776 & 0.0285 & 0.0365 \\
+1.28 & 0.0500 & 0.0786 & 0.0293 & 0.0372 \\
+12.8 & 0.0479 & 0.0753 & 0.0274 & 0.0350 \\
+128 & 0.0472 & 0.0753 & 0.0273 & 0.0351 \\
+Published & 0.0512 & 0.0771 & 0.0292 & 0.0363 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+None brings Rec@10 within 0.001 of the published value. The closest, 1.28, is 0.0012 below it and about 0.001 above the default, within the default's seed spread. The two larger weights are worse on every metric. By the stated rule the loss scale is not shown to explain the gap, and no value was adopted. The gap is unexplained. Unstated settings, the split and other code details are untested candidates, and so are the features (Section~\ref{sec:repro}), though nothing here ties the gap to them.
+
+\subsection{Stress test and VGR}
+
+\begin{table*}[!t]
+\centering\footnotesize
+\caption{Conditions, hashtag noise at rate 0.4 (mean $\pm$ std over 3 seeds).}
+\label{tab:cond}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Condition & Recall@10 & Recall@20 & NDCG@10 & NDCG@20 \\
+\midrule
+Clean baseline & $0.049 \pm 0.002$ & $0.078 \pm 0.004$ & $0.029 \pm 0.002$ & $0.037 \pm 0.002$ \\
+Stress test (noisy text) & $0.042 \pm 0.002$ & $0.067 \pm 0.002$ & $0.024 \pm 0.002$ & $0.031 \pm 0.001$ \\
+MAMEX-VGR (noisy text) & $0.043 \pm 0.002$ & $0.070 \pm 0.002$ & $0.024 \pm 0.001$ & $0.032 \pm 0.001$ \\
+MAMEX-VGR (clean text) & $0.048 \pm 0.002$ & $0.077 \pm 0.005$ & $0.028 \pm 0.002$ & $0.036 \pm 0.002$ \\
+Control: shuffled cosine (noisy) & $0.042 \pm 0.002$ & $0.068 \pm 0.002$ & $0.024 \pm 0.002$ & $0.031 \pm 0.001$ \\
+Control: constant factor (noisy) & $0.042 \pm 0.002$ & $0.068 \pm 0.002$ & $0.024 \pm 0.001$ & $0.031 \pm 0.001$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table}[!t]
+\centering\footnotesize
+\caption{Paired differences per seed, Recall@20. With $n=3$ no significance test is claimed.}
+\label{tab:paired}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+A $-$ B & per-seed & mean & A$>$B \\
+\midrule
+VGR $-$ noisy & $+.0043, +.0023, +.0034$ & $+.0033$ & 3/3 \\
+VGR $-$ shuffled & $+.0018, +.0011, +.0021$ & $+.0017$ & 3/3 \\
+VGR $-$ constant & $+.0020, +.0012, +.0024$ & $+.0018$ & 3/3 \\
+clean VGR $-$ clean & $+.0001, -.0011, -.0000$ & $-.0004$ & 1/3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!t]
+\centering\footnotesize
+\caption{Gate weights on the corrupted cold items (mean $\pm$ std).}
+\label{tab:gate}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Setting & $w_v$ & $w_t$ \\
+\midrule
+Clean & $0.450 \pm 0.002$ & $0.550 \pm 0.002$ \\
+Noisy & $0.437 \pm 0.004$ & $0.563 \pm 0.004$ \\
+Noisy with VGR & $0.584 \pm 0.007$ & $0.416 \pm 0.007$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Cost.} Forward pass 6.47~ms without and 6.83~ms with VGR (means; per-seed 6.43--6.50 and 6.73--7.02, so the timing is noisy). GPU memory 471~MB in both cases. Training 1,054--1,219~s per run, best epoch 410--480. VGR adds no parameters.
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[ybar, bar width=10pt, width=\columnwidth, height=5.4cm,
+  symbolic x coords={R,N}, xtick=data, xticklabels={Recall@20,NDCG@20}, enlarge x limits=0.4,
+  ymin=0, ymax=0.1, ylabel={mean $\pm$ std over seeds}, ylabel style={font=\scriptsize},
+  tick label style={font=\scriptsize}, ymajorgrids, grid style={gray!25},
+  legend style={at={(0.5,1.03)},anchor=south,legend columns=-1,font=\scriptsize,/tikz/every even column/.append style={column sep=4pt}},
+  error bars/y dir=both, error bars/y explicit]
+\addplot[fill=cBlue,draw=none] coordinates {(R,0.0776) +- (0,0.0042) (N,0.0365) +- (0,0.0022)};
+\addplot[fill=cOrange,draw=none] coordinates {(R,0.0668) +- (0,0.0017) (N,0.0307) +- (0,0.0014)};
+\addplot[fill=cGreen,draw=none] coordinates {(R,0.0701) +- (0,0.0024) (N,0.0319) +- (0,0.0013)};
+\legend{Clean baseline,Stress test,MAMEX-VGR}
+\end{axis}
+\end{tikzpicture}
+\caption{Accuracy under text noise (test split, cold items; values from Table~\ref{tab:cond}).}
+\label{fig:acc}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[ybar, bar width=10pt, width=\columnwidth, height=5.4cm,
+  symbolic x coords={V,T}, xtick=data, xticklabels={Visual weight $w_v$,Textual weight $w_t$}, enlarge x limits=0.4,
+  ymin=0, ymax=0.8, ylabel={mean gate weight}, ylabel style={font=\scriptsize},
+  tick label style={font=\scriptsize}, ymajorgrids, grid style={gray!25},
+  legend style={at={(0.5,1.03)},anchor=south,legend columns=-1,font=\scriptsize,/tikz/every even column/.append style={column sep=4pt}},
+  error bars/y dir=both, error bars/y explicit]
+\addplot[fill=cBlue,draw=none] coordinates {(V,0.4497) +- (0,0.0022) (T,0.5503) +- (0,0.0022)};
+\addplot[fill=cOrange,draw=none] coordinates {(V,0.4374) +- (0,0.0045) (T,0.5626) +- (0,0.0045)};
+\addplot[fill=cGreen,draw=none] coordinates {(V,0.5841) +- (0,0.0067) (T,0.4159) +- (0,0.0067)};
+\legend{Clean text,Noisy text,Noisy text + VGR}
+\end{axis}
+\end{tikzpicture}
+\caption{Mean gate weight on the corrupted cold items (mean $\pm$ std over 3 seeds; Table~\ref{tab:gate}).}
+\label{fig:gate}
+\end{figure}
+
+\subsection{Hypotheses}
+
+\textbf{H1, the failure exists: supported.} Corrupting 40\% of cold items' text lowers Recall@20 from 0.0776 to 0.0668 ($-0.0109$, 14\% relative) and NDCG@20 from 0.0365 to 0.0307. The gate does not move away from text on the corrupted items: $w_t$ rises from 0.550 to 0.563, a small change in the wrong direction.
+
+\textbf{H2, VGR reduces it: partly supported, the effect is small.} Noisy VGR beats noisy in 3/3 seeds, by $+0.0033$ Recall@20 and $+0.0012$ NDCG@20. That recovers 27--38\% of the Recall@20 loss (28, 27, 38\% by seed) and 20--23\% of the NDCG@20 loss; most of the loss remains. The gate moves toward the image ($w_t$ 0.563 $\to$ 0.416).
+
+\textbf{H3, small clean cost: supported for quality, not for latency.} Clean VGR $-$ clean is $-0.0004$ Recall@20 and $-0.0002$ NDCG@20, positive in 1 of 3 seeds and smaller than the seed std. The pre-stated latency limit (slowdown below 5\%) is missed: the forward pass rises by 0.36~ms, or 5.6\% (one GPU, per-seed timings 6.4--7.0~ms). Memory is unchanged.
+
+\textbf{H4, the gain comes from grounding: partly supported.} At the selected $\gamma = 1$ the two controls recover about half of VGR's gain (shuffled $+0.0017$, constant $+0.0015$, against $+0.0033$). VGR beats both in 3/3 seeds, so part of the effect depends on the cosine, but about half comes from muting text without looking at the image. The grounding-specific part is about $+0.0017$ Recall@20, roughly 15\% of the loss.
+
+\subsection{Failure analysis}
+
+Users are split by whether any of their test items is corrupted (``exposed''). In seed 2025, noisy VGR $-$ noisy helps 319 users, hurts 304 and leaves 9,851 unchanged, so the net gain lies in the size of the changes. Among the 5,336 exposed users $\Delta$Recall@20 is $+0.0101$ (238 helped, 117 hurt); among the 5,138 unexposed users it is $-0.0016$ (81 helped, 187 hurt). Seeds 2026 and 2027 agree (exposed $+0.0073$, $+0.0088$; unexposed $-0.0027$, $-0.0017$). Corrupted items gain $+18.0$, $+11.4$, $+16.5$ ranks on average (57--59\% improve, 40--42\% worsen); non-corrupted items gain $+4.2$, $+6.2$, $+2.5$. On clean text the effect is symmetric (e.g.\ 225 users helped, 231 hurt). Items can only be listed by id, so no content-level explanation is offered.
+
+\subsection{Sensitivity (single seed 2025, not averaged)}
+
+\begin{table}[!t]
+\centering\footnotesize
+\caption{Recall@20 by noise rate (seed 2025).}
+\label{tab:rate}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+rate & clean & noisy & noisy+VGR & $\gamma$ sel. \\
+\midrule
+0.2 & 0.0819 & 0.0752 & 0.0770 & 1 \\
+0.4 & 0.0819 & 0.0667 & 0.0710 & 1 \\
+0.6 & 0.0819 & 0.0618 & 0.0659 & 1 \\
+0.8 & 0.0819 & 0.0523 & 0.0593 & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+VGR improves Recall@20 at every rate (gain $+0.0018$, $+0.0043$, $+0.0041$, $+0.0070$ for rates 0.2 to 0.8). $\gamma = 1$, the smallest value of the original grid, was selected on validation data for every seed and rate.
+
+\textbf{Gamma below 1 (post hoc, seed 2025 only).} Because the selected $\gamma$ sat at the grid edge, 0.25 and 0.5 were added after the main results were seen: two runs set by hand and one run with the grid extended to $\{0.25, 0.5, 1,\dots,16\}$. On validation data the extended grid selects 0.5 (NDCG@10 0.02658 vs 0.02651 at $\gamma=1$ and 0.02644 at 0.25; the differences are small). The main results keep the original grid.
+
+\begin{table*}[!t]
+\centering\footnotesize
+\caption{Recall@20 for hand-set $\gamma$ at rate 0.4 (seed 2025; a test-set sensitivity table after selection, not used to choose $\gamma$). Noisy without VGR: 0.0667; clean: 0.0819.}
+\label{tab:gamma}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+$\gamma$ & noisy + VGR & shuffled cosine & constant factor & VGR $-$ shuffled & clean + VGR \\
+\midrule
+0.25 & 0.0721 & 0.0714 & 0.0714 & $+0.0007$ & 0.0819 \\
+0.5 & 0.0717 & 0.0710 & 0.0709 & $+0.0007$ & 0.0818 \\
+1 & 0.0710 & 0.0692 & 0.0690 & $+0.0018$ & 0.0820 \\
+2 & 0.0708 & 0.0673 & 0.0679 & $+0.0035$ & 0.0819 \\
+4 & 0.0695 & 0.0667 & 0.0668 & $+0.0028$ & 0.0819 \\
+8 & 0.0691 & 0.0666 & 0.0669 & $+0.0025$ & 0.0819 \\
+16 & 0.0678 & 0.0666 & 0.0668 & $+0.0012$ & 0.0819 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+The total gain over noisy rises as $\gamma$ falls ($+0.0011$ at 16, $+0.0054$ at 0.25). The part that depends on the cosine (VGR minus the controls) does not: it peaks at $\gamma = 2$ and shrinks to $+0.0007$ at 0.25, where the controls match VGR almost exactly. At small $\gamma$ the factor $\sigma(\gamma\cos)$ is near 0.5 for every item, so VGR acts as a uniform down-weighting of text. The $\gamma$ chosen on validation lies where a large share of the gain comes from muting text. Choosing $\gamma = 2$ from this table would be tuning on the test set and was not done.
+
+%====================================================================
+\section{Limitations, Conclusions, Unresolved Questions}
+
+\textbf{Limitations.} The reproduction is close but not exact: Rec@10 is about 0.0025 below the published value and the gap is unexplained. The distributed features are probably not the CLIP features the paper describes (Section~\ref{sec:repro}); the size of the loss and of the recovery may differ with other features. The noise is simulated on embeddings by mixing in one of five warm-item prototypes, not generated from real clickbait text. There is one dataset, one noise family at the headline rate and three seeds; paired differences agree in sign, but are of the order of the seed std (about 0.002) and no significance test is claimed. Sweeps use one seed. The selected $\gamma$ is the grid minimum for all seeds and rates; the post-hoc extension to $\gamma<1$ raises the total gain but shrinks the cosine-specific part, and the validation criterion cannot tell the two apart. Latency is noisy at this scale (6.4--7.0~ms). Hyperparameters are repository defaults and were not tuned. Not run: noise-augmented training, other noise types, datasets and cold-start models.
+
+\textbf{Conclusions.} On the distributed data the released code reproduces the published Rec@20 and NDCG@20 within seed noise and falls about 0.0025 short on Rec@10, which we could not explain. MAMEX loses 14\% of its cold-item Recall@20 when 40\% of the cold items' text is corrupted, and its gate keeps trusting the text. VGR recovers about a third of that loss in all three seeds, at no measurable clean-data accuracy cost and about 0.4~ms (5.6\%) of latency, slightly above the 5\% limit set in advance. About half of the gain is also obtained by a control that does not use the image, so the grounding-specific effect is small, about 0.0017 Recall@20 at the selected $\gamma$. The share depends strongly on $\gamma$: smaller below 1, larger around 2. The gain concentrates on users who see corrupted items, and VGR slightly hurts the others. As a fix the result is modest, not a solution.
+
+\textbf{Unresolved questions.} Is there a $\gamma$ selection rule that favours values whose gain depends on the cosine (for example one that also reports the shuffled-cosine control on validation data), and does the $\gamma\approx2$ pattern hold on other seeds? Does the pattern hold with real clickbait text, with genuine CLIP features, on other datasets and with training-time noise? What closes the remaining Rec@10 gap of about 0.0025, given that neither more seeds nor the alignment-loss scale does? The features, the split and unstated settings are candidates that were not tested.
+
+%====================================================================
+% Bibliography is embedded so the build needs no .bib file.
+% Venue, pages and DOI were checked against the Crossref record or the publisher page.
+\begin{thebibliography}{9}
+\bibitem{nguyen2025mamex} V.-K. Nguyen, D.-H. Pham, H.-S. Nguyen, C.-V. T. Nguyen, H.-Q. Le, and D.-T. Le, ``{MAMEX}: Multi-modal adaptive mixture of experts for cold-start recommendation,'' in \emph{Proc. 34th ACM Int. Conf. Information and Knowledge Management (CIKM)}, 2025, pp. 5053--5057, doi:10.1145/3746252.3760837.
+\bibitem{he2016vbpr} R. He and J. McAuley, ``{VBPR}: Visual Bayesian personalized ranking from implicit feedback,'' in \emph{Proc. AAAI Conf. Artificial Intelligence}, vol.~30, no.~1, 2016, pp. 144--150, doi:10.1609/aaai.v30i1.9973.
+\bibitem{wei2019mmgcn} Y. Wei, X. Wang, L. Nie, X. He, R. Hong, and T.-S. Chua, ``{MMGCN}: Multi-modal graph convolution network for personalized recommendation of micro-video,'' in \emph{Proc. 27th ACM Int. Conf. Multimedia (MM)}, 2019, pp. 1437--1445, doi:10.1145/3343031.3351034.
+\bibitem{wei2021clcrec} Y. Wei, X. Wang, Q. Li, L. Nie, Y. Li, X. Li, and T.-S. Chua, ``Contrastive learning for cold-start recommendation,'' in \emph{Proc. 29th ACM Int. Conf. Multimedia (MM)}, 2021, pp. 5382--5390, doi:10.1145/3474085.3475665.
+\bibitem{liu2026motorec} J. Liu, Z. Zhang, and R. C. C. Cheung, ``{MoToRec}: Sparse-regularized multimodal tokenization for cold-start recommendation,'' in \emph{Proc. 40th AAAI Conf. Artificial Intelligence}, vol.~40, no.~18, 2026, pp. 15324--15332, doi:10.1609/aaai.v40i18.38558.
+\bibitem{kim2025dgmrec} J. Kim, H. Kang, S. Kim, K. Kim, and C. Park, ``Disentangling and generating modalities for recommendation in missing modality scenarios,'' in \emph{Proc. 48th Int. ACM SIGIR Conf. Research and Development in Information Retrieval}, 2025, pp. 1820--1829, doi:10.1145/3726302.3729953.
+\bibitem{mmsrec} kz-song, ``{MMSRec} code repository.'' [Online]. Available: \url{https://github.com/kz-song/MMSRec} (README read 2026-10-23).
+\bibitem{radford2021clip} A. Radford \emph{et al.}, ``Learning transferable visual models from natural language supervision,'' in \emph{Proc. 38th Int. Conf. Machine Learning (ICML)}, PMLR vol.~139, 2021, pp. 8748--8763.
+\bibitem{zhang2021lattice} J. Zhang, Y. Zhu, Q. Liu, S. Wu, S. Wang, and L. Wang, ``Mining latent structures for multimedia recommendation,'' in \emph{Proc. 29th ACM Int. Conf. Multimedia (MM)}, 2021, pp. 3872--3880, doi:10.1145/3474085.3475259.
+\end{thebibliography}
+
+%====================================================================
+\appendices
+
+\section{AI-Use Disclosure}
+\label{app:ai}
+
+Tool: Claude Code (Anthropic CLI), model Claude Sonnet 5.5, used for this project from 2026-10-16, including web search and page fetching. The git commit carries no AI trailer, so this appendix is the record of AI contribution. The author remains responsible for reading the sources, checking the citations and defending the conclusions.
+
+\begin{table}[!h]
+\centering\footnotesize
+\begin{tabularx}{\columnwidth}{@{}p{1.8cm}X@{}}
+\toprule
+Area & Contribution \\
+\midrule
+Code & Restructured the upstream code into a package; wrote the noise simulator, VGR and its controls, $\gamma$ selection, evaluation report, CLI modes, plotting, table and failure-analysis scripts, the experiment scripts and the tests (test-first); translated Vietnamese and Chinese comments to English \\
+Design & Proposed the noise protocol, the controls and the $\gamma$-selection rule; wrote the hypotheses before full-training results were read \\
+Literature & Ran the searches, read paper pages, compiled the matrix and bibliography \\
+Debugging & Found that the \code{improved} mode also trained with VGR and changed it \\
+Runs & Launched and monitored the experiment grid and the diagnostic runs; generated tables, figures and the failure analysis from saved outputs; checked that a repeated run reproduces them \\
+Report & Drafted the report; every number comes from the saved experiment outputs or the cited papers \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Literature Comparison Matrix}
+\label{app:matrix}
+
+Fields follow the course template. [Authors]: a claim or number the cited paper reports. [Interpretation]: an inference drawn here.
+
+\begin{table*}[!t]
+\centering\footnotesize
+\caption{Matrix, part 1: VBPR~\cite{he2016vbpr} and MMGCN~\cite{wei2019mmgcn}.}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\textwidth}{@{}p{2.4cm}XX@{}}
+\toprule
+Field & VBPR (He \& McAuley, AAAI 2016) & MMGCN (Wei et al., ACM MM 2019) \\
+\midrule
+Question and contribution & Can product-image appearance improve implicit-feedback ranking, including for items with little feedback? [Authors]: adds visual factors to BPR-MF. & Model modality-specific user preferences for micro-video recommendation. [Authors]: one user-item graph per modality with message passing. \\
+Modalities and assumptions & Image (4096-d CNN FC7, ImageNet-pretrained) and implicit feedback. Items need only an image to be scored. Users with $<5$ positives dropped. & Visual, acoustic, textual pre-extracted features. Items must already sit in the interaction graph, so it is not a cold-item method [Interpretation]. \\
+Mechanism and objective & $\hat{x} = \alpha + \beta_u + \beta_i + \gamma_u^{\top}\gamma_i + \theta_u^{\top}(E f_i) + \beta'^{\top} f_i$; BPR-OPT; 20 factors, half visual. & Per-modality GCN aggregation (mean or max) with combination layers and a shared user-ID embedding; representations are the sum of the modality-specific ones, scored by inner product; BPR loss with L2; SGD. \\
+Data and protocol & Amazon Women/Men/Phones, Tradesy. One random item per user for val and test. Cold = test items with $<5$ training positives (not zero). AUC. & Tiktok 726,065 / Kwai 1,664,305 / MovieLens 1,239,508 interactions. Random 8:1:1 over interactions; each test pair ranked against 1000 unobserved videos; Precision, Recall, NDCG@10. \\
+Baselines and evidence & RAND, MP, IBR, MM-MF, BPR-MF; hyperparameters tuned on validation; no seeds or significance tests. Women cold-start AUC: VBPR 0.6813 vs BPR-MF 0.5281; Phones: VBPR 0.6056 below IBR 0.6319 [Authors]. & VBPR, ACF, GraphSAGE, NGCF. Recall gains over the strongest baseline 15.59\% / 10.23\% / 8.76\% (Kwai / Tiktok / MovieLens) [Authors]. Multimodal beats each single modality; visual is most effective, text least on Kwai and Tiktok. \\
+Resources and reproducibility & Desktop, 4 cores, 32 GB; about 3.5 h on Women. Code ``at publication time'', no link in the text. & Authors state they release codes, parameters and baselines. \\
+Limitations and connections & Single image per item; visual/latent split fixed 50/50; no component ablation. Image only. & Random interaction split: no cold-item evaluation, no corrupted-modality test. Calls the Kwai/Tiktok descriptions ``noisy, incomplete, and even irrelevant'' but runs no corrupted-text test. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{table*}[!t]
+\centering\footnotesize
+\caption{Matrix, part 2: CLCRec~\cite{wei2021clcrec} and MoToRec~\cite{liu2026motorec}.}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\textwidth}{@{}p{2.4cm}XX@{}}
+\toprule
+Field & CLCRec (Wei et al., ACM MM 2021) & MoToRec (Liu, Zhang \& Cheung, AAAI 2026) \\
+\midrule
+Question and contribution & Cold-start item embeddings from an information-theoretic view: maximize mutual information between content and collaborative signals. & Argues that aligning noisy continuous multimodal embeddings causes ``semantic fog''; proposes discrete semantic tokens. \\
+Modalities and assumptions & Pre-extracted visual, acoustic, text features (ResNet, VGGish, Sentence2Vector); Amazon uses 64-d visual only. Cold items scored from the content encoder alone. & Visual (BEiT), text (BGE), learnable ID embeddings. Cold = items with $<10$ training interactions. Deployment for new items not described [Authors' text]. \\
+Mechanism and objective & Contrastive U-I and R-E objectives, $\lambda L_{RE} + (1-\lambda) L_{UI}$; hybrid training swaps in content features with probability $\rho$. & Sparsity-regularised RQ-VAE per modality, rarity weighting, LightGCN-based multi-source graph encoder; $L_{BPR}+L_{CL}+L_{RQ}+L_{reg}$. \\
+Data and protocol & Movielens, Tiktok, Kwai, Amazon; cold items split 1:1 into val/test, warm items 8:1:1. Recall@10, NDCG@10. & Amazon Baby (19,445 users, 7,050 items), Sports, Clothing. Random 8:1:1 over interactions; cold group = test items with $<10$ training interactions. R, N@\{10,20\}. \\
+Baselines and evidence & DUIF, DropoutNet, MTPR, CB2CF, Heater; same 64-d embedding for all. Single runs, no variance. & MF-BPR, LightGCN, VBPR, MMGCN, LATTICE, FREEDOM, BM3, LGMRec and others, in MMRec; grid search only described for MoToRec [Interpretation: baseline tuning fairness unverifiable]. Baby R@20 0.1077; Baby cold-start R@20 0.0347 [Authors]. \\
+Resources and reproducibility & Code and data released; hardware not stated. & Hardware and code not stated. \\
+Limitations and connections & Single runs without variance. No text-corruption test. & Cold-start differs from complete cold start (items still have some interactions). Claims noisy embeddings are a problem but does not corrupt inputs to test it. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{table*}[!t]
+\centering\footnotesize
+\caption{Matrix, part 3: MAMEX~\cite{nguyen2025mamex} (the paper reproduced) and DGMRec~\cite{kim2025dgmrec} (supporting).}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\textwidth}{@{}p{2.4cm}XX@{}}
+\toprule
+Field & MAMEX (Nguyen et al., CIKM 2025) & DGMRec (Kim et al., SIGIR 2025) \\
+\midrule
+Question and contribution & Cold-start fusion fails because concatenation, averaging or fixed weights ignore modality relations; adaptive gating across modality experts. & Multimodal recommenders degrade when item modalities are missing, and filling in a global or nearest-neighbour mean does not prevent it [Authors]. Disentangles general and modality-specific features and generates the missing ones. \\
+Modalities and assumptions & CLIP image and text features [Authors]; no dimensions stated. Complete item cold start: all interactions of dev/test items removed. & Image and text on Amazon (a CNN for images, SBERT for text [Authors]); TikTok adds audio. Some or all modality features of an item are absent; present features are assumed correct [Interpretation]. \\
+Mechanism and objective & Modality-specific MoE (linear experts, top-$k$) and sparse-softmax gate over $[z_{img}\Vert z_{text}]$; $L_{BPR}+\lambda_1 L_{align}+\lambda_2 L_{adapter}+\lambda_3 L_{fusion}+\lambda_4\lVert\Theta\rVert^2$. & Autoencoder; general and specific encoders trained with two information-based losses; a missing modality is generated from the other modalities and from the modality preferences of the item's users; generated features refine the item-item graph. \\
+Data and protocol & Amazon Baby, Clothing, Sports; 8:1:1; Rec, NDCG@\{10,20\}. & Amazon Baby, Sports, Clothing and TikTok; 8:1:1; Recall, NDCG@\{20,50\}. Missing setting: a third of items miss 0, 1 or 2 modalities; new-item setting: 20\% of items only in test; missing ratios 0 to 80\%. \\
+Baselines and evidence & MTPR, AlignRec, MetaEmbed, DropoutNet, CLCRec, GAR, MILK. Baby: Rec@20 0.0771, NDCG@20 0.0363 [Authors]. Modality ablation (figure only): text beats vision, both beat either alone. & 5 CF models, 10 multimodal recommenders (VBPR, MMGCN, LATTICE, LGMRec, GUME and others) and 3 missing-modality-aware ones; best in the missing and new-item settings; drops 10.2\% vs 15.1\% for the compared baseline at an 80\% missing ratio [Authors]. \\
+Resources and reproducibility & Code public (github.com/L2R-UET/MAMEX); batch size, epochs, embedding size and hardware not stated. & Code public (github.com/ptkjw1997/DGMRec); Adam, embedding size 64, up to 1,000 epochs, early stopping 30, $\lambda_1,\lambda_2$ tuned in $\{1,0.1,0.01,0.001\}$. \\
+Limitations and connections & No limitations section; future work lists missing modalities. Clean features only; the gate's behaviour under corrupted text is untested. Direct target of this project. & No limitations section. Handles absent modalities, not present but misleading ones; the injected features it criticises are shown to hurt, the closest it comes to a corrupted input, but no corrupted-text test is run [Interpretation]. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\section{Reproduction Record}
+\label{app:record}
+
+\textbf{Source revision.} Reproduced code: upstream MAMEX, \url{https://github.com/L2R-UET/MAMEX}, commit \code{88a932eca821a5657b2b7fc0b6445e4685f4dfab}. This project's repository (URL on page 1) is a package restructure of that code; the model, loss and training loop are unchanged except for a \code{--train_with_vgr} switch (default off). The training and evaluation code did not change after 17 October 2026: the experiments ran between 16 and 23 October 2026 during development, and later edits only touched reporting scripts, file layout and documentation. The repository holds the final state as a single commit. The tables regenerate identically from the saved outputs.
+
+\textbf{Environment.} Linux 7.0.0; Python 3.13.9; PyTorch 2.9.1; Intel Core i9-12900K, 62~GB RAM; NVIDIA RTX A4000. Package versions are pinned in the repository's requirements file. Setup: create a virtual environment, install the matching \code{torch} wheel, then the requirements.
+
+\textbf{Data.} Amazon Baby, item cold-start split, as distributed by the MAMEX authors (\url{https://drive.google.com/file/d/1C-18Y84lMS5xsRGwKQYa9P0Tot-gxgYY/view}, the link in their README; the archive is dated 2023 and holds no raw text, images or ASIN mapping). The data are not redistributed here. SHA-256 of the six files used, computed from the downloaded archive:
+
+\begin{table*}[!t]
+\centering\scriptsize
+\caption{Data files used (7,050 items, 1,410 cold, 19,442 training users).}
+\begin{tabular}{@{}ll@{}}
+\toprule
+File & SHA-256 \\
+\midrule
+train.txt & \texttt{330c8bdff9b82a3b9b83f24dae5830c915a9aff239352f788959a15b71c3b83f} \\
+val.txt & \texttt{4768ff30900b4ff84d053ee2df416cb9b51248a6b20eed1fc139f7f47ed82382} \\
+test.txt & \texttt{d72c5f69bbe1a3ae6683efecdb6ed40e24613c05dc0d5f1617f40dc79be18aea} \\
+cold\_item\_index.npy & \texttt{fd57f2947047eed66be739be65355b0214c129d0d6e31fa55ecf95e3d3b20abd} \\
+image\_feat.npy (7050$\times$4096, float64) & \texttt{2fc1695bc4fdf58a13d325dd0a63fe270d864ec4c8b26b780f8a1eee9682747e} \\
+text\_feat.npy (7050$\times$1024, float32) & \texttt{c0c9b38fc9871d635814484e5948f4c4eeb2e0c33668babdf3747898ce4400b2} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\textbf{Licence.} Amazon review data are distributed by their authors for research under their own terms; check the original dataset page before redistributing. The upstream README states the MIT licence, but the upstream repository ships no \code{LICENSE} file at the base commit.
+
+\textbf{Seeds and configuration.} Training seeds 2025, 2026, 2027 for all main results (ten baseline seeds, 2025--2034, for diagnostic D1). The corruption seed defaults to the training seed, so one seed gives one corruption mask in every mode; the validation mask for $\gamma$ selection uses the seed plus 10,000. Other settings are the upstream defaults: learning rate $10^{-3}$, batch 2,048, 128-d embeddings, up to 1,000 epochs, early stopping after 200 epochs without improvement, alignment weight 1. The same seed and code give the same clean result (checked on baseline and stress test, seed 2025); GPU nondeterminism was not otherwise audited.
+
+\textbf{Commands} (from the repository root):
+\begin{itemize}
+\item tests (94, no GPU): \code{PYTHONPATH=src python -m pytest -q}
+\item short check on the real data (3 epochs; not a reported result): \code{PYTHONPATH=src python main.py --data_path processed_data_baby/cold --mode baseline --seed 1 --epoch 3 --eva_interval 1 --suffix smoketest}; it writes two \code{smoketest} files into the results folder, which can be deleted
+\item core grid: \code{DATA_PATH=processed_data_baby/cold SEEDS="2025 2026 2027" ./scripts/run_experiments.sh} (baseline, stress test and improved mode per seed)
+\item single-seed sweeps (noise rate, $\gamma$): \code{PARALLEL=1 SKIP_CORE=1 SWEEPS=1 SEEDS=2025 DATA_PATH=processed_data_baby/cold ./scripts/run_experiments.sh}
+\item diagnostics: \code{STREAM=A|B|C DATA_PATH=processed_data_baby/cold ./scripts/run_discrepancy.sh} (A: baseline seeds 2028--2034; B and C: alignment weights 1.28, 12.8 and 128)
+\item tables, failure analysis, figures: the \code{make_tables}, \code{failure_analysis} and \code{plot_results} modules of the reporting package, run on the saved outputs.
+\end{itemize}
+
+\textbf{Cost and checkpoints.} One RTX A4000; about 19 minutes of training per run when run alone. The 9 core runs took 2.8 hours of training in total; the 14 single-seed sweep runs bring the total over the first 23 result files to 10.8 hours, and the 16 diagnostic runs (three in parallel, hence 2,000--3,600~s each) add 11.9 hours, for 22.7 hours over 39 result files. No checkpoints are saved or published: the best-epoch weights are kept in memory and used for evaluation, so every result comes from retraining with the seeds above. Because the evaluation-time conditions (noise rate, VGR, $\gamma$, controls) do not change training, runs with the same seed retrain the same clean model (identical clean metrics were observed); saving one checkpoint per seed and evaluating all conditions on it would have cut most of the 22.7 hours. Running the experiments on CPU was not tried. The results that need a GPU are all of the training runs; the tests do not.
+
+\end{document}

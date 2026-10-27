@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mamex-robustness"
+version = "0.1.0"
+description = "Robustness analysis of MAMEX's adaptive gating under noisy text, with Visual Grounding Regularization"
+requires-python = ">=3.9"
+
+[tool.setuptools.packages.find]
+where = ["src"]

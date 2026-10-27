@@ -5,6 +5,8 @@ import scipy.sparse as sp
 import torch
 from tqdm import tqdm
 
+from mamex_robustness.domain.noise import CorruptionSpec, TextNoiseSimulator
+
 
 class Loader4MM(torch.utils.data.Dataset):
     def __init__(self, env):
@@ -134,10 +136,15 @@ class Loader4MM(torch.utils.data.Dataset):
             return image_feat, text_feat, None
 
 
+    def noisy_text_feat(self, noise_rate, noise_type='hashtag', seed=2025):
+        """Corrupted copy of text_feat; only cold items are touched, self.text_feat is unchanged."""
+        simulator = TextNoiseSimulator(CorruptionSpec(noise_rate, noise_type, seed))
+        return simulator(self.text_feat, self.cold_item_index, self.warm_item_index)
+
     def getUserAllItems(self):
         """
-        得到训练集和验证集中用户交互过的item
-        用于负采样
+        Get the items each user interacted with in the training and validation sets
+        Used for negative sampling
         """
         posItems = defaultdict(list)
 
