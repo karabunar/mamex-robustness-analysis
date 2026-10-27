@@ -25,7 +25,9 @@ python -m mamex_robustness.reporting.plot_results --results_dir results --k 20
 ```
 
 ## Data
-Not included. Where to get it, its licence status and what is still unknown: `docs/reproducibility.md`.
+Not included in the repository. Download `processed_data_baby.zip` from the Google Drive link in the upstream README: <https://drive.google.com/file/d/1C-18Y84lMS5xsRGwKQYa9P0Tot-gxgYY/view>. Unzip it and pass the `cold/` folder as `DATA_PATH` (`processed_data_baby/cold`). It must contain `train.txt`, `val.txt`, `test.txt`, `cold_item_index.npy`, `image_feat.npy` and `text_feat.npy` (7,050 items, 1,410 cold items, 19,442 training users).
+
+SHA-256 checksums of the six files, the feature-provenance notes and the licence status are in `docs/reproducibility.md`. Amazon review data is distributed under its own research terms; check the original dataset page before redistributing. No data is committed here.
 
 ## Results
 Test split, cold items only, hashtag noise on 40% of cold items, mean over seeds 2025–2027 (`results/tables.md`, built from `results/*.json`).
