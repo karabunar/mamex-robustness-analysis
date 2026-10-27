@@ -134,7 +134,7 @@ We read the model implementation of the reproduced code, then checked it against
 
 \textbf{Why this points away from CLIP} (our reading).
 \begin{itemize}
-\item \emph{Dimension.} CLIP's released image encoders output embeddings of 512 to 1,024 dimensions~\cite{radford2021clip}; none outputs 4,096. (Some encoders have wider intermediate feature maps, but a spatially pooled map would not have 79\% exact zeros; this is our reading.) The 1,024-d text dimension alone does not discriminate: both CLIP text encoders and sentence-transformers models can output it.
+\item \emph{Dimension.} CLIP's released image encoders output embeddings of 512 to 1,024 dimensions~\cite{radford2021clip}; none outputs 4,096. (The last ResNet stage of RN50x64 is 4,096 channels wide (Table~19 of the paper), but CLIP does not output it as the embedding, and a spatially pooled map of it would not have 79\% exact zeros; this is our reading.) The 1,024-d text dimension alone does not discriminate: both CLIP text encoders and sentence-transformers models can output it.
 \item \emph{Shape of the values.} Non-negative, 79\% sparse vectors of 4,096 dimensions are what a ReLU-gated fully connected layer of an ImageNet CNN produces (VBPR's 4096-d fc7 features~\cite{he2016vbpr} have this form); CLIP's output embeddings are dense and signed.
 \item \emph{Independent description of Baby.} LATTICE~\cite{zhang2021lattice} uses the same dataset (19,445 users, 7,050 items) with ``the 4,096-dimensional visual features that have been extracted and published'' and 1,024-d sentence-transformers text embeddings. DGMRec~\cite{kim2025dgmrec} states that its Amazon features come from ``a CNN model and SBERT''. The dimensions match the distributed files.
 \end{itemize}
