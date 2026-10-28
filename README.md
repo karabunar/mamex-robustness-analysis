@@ -40,7 +40,25 @@ Test split, cold items only, hashtag noise on 40% of cold items, mean over seeds
 | Noisy text, VGR | 0.0701 | 0.0319 |
 | Noisy text, shuffled-cosine control | 0.0684 | 0.0313 |
 
-The published Baby numbers (Rec@20 0.0771, NDCG@20 0.0363) are listed separately in the report. VGR recovers about a third of the Recall@20 lost to the noise in all three seeds, and about half of that gain is also obtained by a control that does not use the image. 95% bootstrap intervals over test users, Success@K and MRR are in `results/ranking_metrics.md` (`python -m mamex_robustness.reporting.ranking_metrics`). The Recall@20 gain of VGR over the noisy model is +0.0033 [0.0024, 0.0044] and over the shuffled control +0.0017 [0.0011, 0.0023]; on clean text VGR costs about 0.0004 Recall@20 (interval includes 0) and 0.0002 NDCG@20 (interval just excludes 0). The intervals cover test-user sampling, not training-seed variance. Training with corrupted warm-item text (H5, rate 0.4, three seeds) did not help: noisy Recall@20 0.0568 against 0.0668 for the clean-trained stress test, clean Recall@20 0.0725 against 0.0776, VGR gain +0.0003; the gate moves almost entirely to text and we did not find out why (`results/tables.md`, report section VII). Details, controls and failure analysis: `docs/report/report.tex`, section VII.
+The published Baby numbers (Rec@20 0.0771, NDCG@20 0.0363) are listed separately in the report. VGR recovers about a third of the Recall@20 lost to the noise in all three seeds, and about half of that gain is also obtained by a control that does not use the image. 95% bootstrap intervals over test users, Success@K and MRR are in `results/ranking_metrics.md` (`python -m mamex_robustness.reporting.ranking_metrics`). The Recall@20 gain of VGR over the noisy model is +0.0033 [0.0024, 0.0044] and over the shuffled control +0.0017 [0.0011, 0.0023]; on clean text VGR costs about 0.0004 Recall@20 (interval includes 0) and 0.0002 NDCG@20 (interval just excludes 0). The intervals cover test-user sampling, not training-seed variance. Details, controls and failure analysis: `docs/report/report.tex`, section VII.
+
+### Ablation: noise-augmented training (H5)
+Added 2026-10-28, after H1 to H4 and their results were known; hypothesis written before the runs (`docs/hypotheses.md`). In every training epoch 40% of the warm items' text is corrupted with the same hashtag noise (`--train_noise_rate 0.4`; new mask and prototypes each epoch, cold items are never seen in training). Evaluation is as in the main grid. Three seeds, Recall@20 / NDCG@20, mean:
+
+| Condition | Clean training | Noise-augmented training |
+|---|---|---|
+| Clean text | 0.0776 / 0.0365 | 0.0725 / 0.0325 |
+| Noisy text | 0.0668 / 0.0307 | 0.0568 / 0.0261 |
+| Noisy text, VGR | 0.0701 / 0.0319 | 0.0571 / 0.0263 |
+
+- H5a (augmentation lifts noisy accuracy): **not supported**. Worse than the clean-trained model in 3/3 seeds (mean -0.0100 Recall@20).
+- H5b (costs clean accuracy): supported, -0.0052 Recall@20 (3/3 seeds), less than the 0.0108 the noise costs the baseline.
+- H5c (VGR adds less on top): supported in size (+0.0003 against +0.0033), but not in mechanism: the gate of the augmented models puts almost all weight on text (w_t 0.986 on clean and 0.917 on noisy cold items, against 0.55 and 0.56 with clean training). We did not find out why.
+
+This is one design (rate 0.4, same noise family as the test noise, new prototypes each epoch), so it shows that this augmentation did not help, not that augmentation cannot. Per-seed numbers and paired differences: `results/tables.md`; discussion: report section VII-D. Reproduce: `NOISE_AUG=1 SKIP_CORE=1 DATA_PATH=processed_data_baby/cold ./scripts/run_experiments.sh`.
+
+## Tests
+`python -m pytest -q` runs 110 tests in about 3 seconds on CPU, with a tiny synthetic dataset (no real data needed). They cover the noise simulator and its mask rules (18), the VGR gating and controls (8 + 4), the session evaluation and report (14 + 4), the CLI (9 + 5 end to end), the legacy behaviour of the upstream code before the restructure (5), result tables, plots, failure analysis and bootstrap metrics (13 + 8 + 8 + 6). The newest ones (10) check the ablation: training noise touches only warm items, at the requested share, is redrawn each epoch, never reaches validation or the stored model state, and does not overlap the test mask; the ablation table pairs every seed with its clean-trained runs and is left out when no augmented run exists. Status on 2026-10-28: 110 passed. The tests check the code, not the scientific results.
 
 ## Literature
 `docs/literature.md`, `docs/references.bib`.
