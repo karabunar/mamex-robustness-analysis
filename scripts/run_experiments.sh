@@ -4,6 +4,7 @@
 #   SWEEPS=1 SEEDS="2025" ./scripts/run_experiments.sh           # + noise-rate and gamma sweeps (1 seed)
 #   SKIP_CORE=1 SWEEPS=1 SEEDS="2025" ./scripts/run_experiments.sh   # sweeps only, core runs already done
 #   PARALLEL=1 SKIP_CORE=1 SWEEPS=1 ./scripts/run_experiments.sh     # the two sweep streams (noise rate, gamma) run side by side on one GPU
+#   NOISE_AUG=1 SKIP_CORE=1 ./scripts/run_experiments.sh         # noise-augmented training ablation (H5), results carry suffix noise_aug
 #   DRY=1 ./scripts/run_experiments.sh                           # print the commands only
 set -euo pipefail
 cd "$(dirname "$0")/.."   # run from the repository root, wherever the script is called from
@@ -47,6 +48,12 @@ if [ -n "${SWEEPS:-}" ]; then
             sweep_rates "$seed"
             sweep_gamma "$seed"
         fi
+    done
+fi
+
+if [ -n "${NOISE_AUG:-}" ]; then   # train on corrupted warm-item text; evaluation as in the core grid (H5)
+    for seed in $SEEDS; do
+        run --mode improved --seed "$seed" --noise_rate "$RATE" --train_noise_rate "$RATE" --gamma_grid $GAMMA_GRID --suffix noise_aug
     done
 fi
 

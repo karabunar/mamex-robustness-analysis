@@ -15,6 +15,8 @@ from mamex_robustness.tool import cprint, shuffle
 class Session(object):
     # Validation noise must not share the test noise mask.
     VAL_NOISE_SEED_OFFSET = 10_000
+    # Training noise (--train_noise_rate) is redrawn every epoch from this offset plus the epoch.
+    TRAIN_NOISE_SEED_OFFSET = 20_000
 
     def __init__(self, env, model, loader):
         self.env = env
@@ -84,9 +86,21 @@ class Session(object):
         finally:
             self.model.use_vgr = eval_vgr
 
+    def _noisy_train_epoch(self, epoch):
+        """One training epoch; with --train_noise_rate a fresh share of warm items' text is corrupted for this epoch only."""
+        rate = getattr(self.env.args, 'train_noise_rate', 0.0)
+        if rate <= 0:
+            return self.train_epoch()
+        seed = (getattr(self.env.args, 'noise_seed', None) or 0) + self.TRAIN_NOISE_SEED_OFFSET + epoch
+        self.model.set_eval_text(self.dataset.train_noisy_text_feat(rate, self.env.args.noise_type, seed))
+        try:
+            return self.train_epoch()
+        finally:
+            self.model.set_eval_text(None)
+
     def _train_loop(self, epochs):
         for epoch in range(self.env.args.ckpt_start_epoch, epochs):
-            loss, bpr_loss, reg_loss, align_loss, moe_balance_loss, fusion_balance_loss, train_time = self.train_epoch()
+            loss, bpr_loss, reg_loss, align_loss, moe_balance_loss, fusion_balance_loss, train_time = self._noisy_train_epoch(epoch)
             print('-' * 30)
             print(
                 f'TRAIN:epoch = {epoch}/{epochs} loss_s1 = {loss:.5f}, bpr_loss_s1 = {bpr_loss:.5f}, align_loss = {align_loss:.5f}, moe_balance_loss = {moe_balance_loss:.5f}, fusion_balance_loss = {fusion_balance_loss:.5f}, train_time = {train_time:.2f}')

@@ -4,8 +4,8 @@ Facts below were taken from the machine and repository on 2026-10-16. Only facts
 
 ## Code version
 - Reproduced code: upstream MAMEX, <https://github.com/L2R-UET/MAMEX>, commit `88a932eca821a5657b2b7fc0b6445e4685f4dfab` (the base of this branch; remote `upstream`).
-- This project: the final state as a single commit on top of the upstream commit above (submission tag pending). The experiments ran between 2026-10-16 and 2026-10-23 during development. The training and evaluation code did not change after 2026-10-17; later edits only touched reporting scripts, file layout and documentation. The tables regenerate identically from the saved outputs.
-- Changes to the upstream code are listed in the report's deviation section (package restructure, `--data_path`, test-time text corruption, VGR, evaluation report). The model, loss and training loop are otherwise unchanged except for the `--train_with_vgr` switch (default off).
+- This project: a few commits on top of the upstream commit above, all made on 2026-10-27 after the experiments, so commit timestamps do not show when the runs were made (submission tag pending). The experiments ran between 2026-10-16 and 2026-10-23 during development. The training and evaluation code did not change in behaviour after 2026-10-17: later edits touched reporting scripts, file layout and documentation. The one exception is the noise-augmented ablation of 2026-10-28, which added the `--train_noise_rate` switch (default 0, training on clean text as before) and three runs; the core grids, sweeps and diagnostics were not rerun and the existing tables regenerate identically from their saved outputs.
+- Changes to the upstream code are listed in the report's deviation section (package restructure, `--data_path`, test-time text corruption, VGR, evaluation report). The model, loss and training loop are otherwise unchanged except for the `--train_with_vgr` and `--train_noise_rate` switches (both default off).
 
 ## Environment
 | Item | Value |
@@ -45,11 +45,12 @@ Shapes: 7,050 items; 1,410 cold items; 19,442 training users; `image_feat` 7050�
 ## Commands
 ```
 export PYTHONPATH=src
-python -m pytest -q                       # 100 tests, no GPU needed
+python -m pytest -q                       # 110 tests, no GPU needed
 # short real-data check (3 epochs, not a reported result); delete the *_smoketest files it writes in results/
 python main.py --data_path processed_data_baby/cold --mode baseline --seed 1 --epoch 3 --eva_interval 1 --suffix smoketest
 DATA_PATH=processed_data_baby/cold SEEDS="2025 2026 2027" ./scripts/run_experiments.sh   # baseline, stress_test, improved per seed
 python -m mamex_robustness.reporting.plot_results --results_dir results --k 20   # figures
+NOISE_AUG=1 SKIP_CORE=1 SEEDS="2025 2026 2027" DATA_PATH=processed_data_baby/cold ./scripts/run_experiments.sh   # noise-augmented training ablation (H5), suffix noise_aug
 ```
 Cost and checkpoints. All reported runs used one RTX A4000, about 19 minutes of training each. The 9 core runs (baseline, stress test and improved, three seeds) took 2.8 hours of training in total; the 14 sweep runs (noise rates, manual γ, low γ, extended grid) bring the sum of `train_seconds` over those 23 result files to 10.8 hours. The tests need no GPU; running the experiments on CPU was not tried. No checkpoints are saved or committed: `--save` defaults to 0 and `scripts/run_experiments.sh` does not set it, the best-epoch weights are kept in memory during a run and used for the evaluation, and every result comes from retraining with the seeds above. Evaluation-time conditions (noise rate, VGR, γ, controls) do not change training, so runs with the same seed retrain the same clean model; one checkpoint per seed evaluated under all conditions would have cut most of the total training time.
 
@@ -59,7 +60,7 @@ STREAM=A DATA_PATH=processed_data_baby/cold ./scripts/run_discrepancy.sh   # bas
 STREAM=B DATA_PATH=processed_data_baby/cold ./scripts/run_discrepancy.sh   # align_coeff 1.28 (3 seeds), 12.8 (seed 2025)
 STREAM=C DATA_PATH=processed_data_baby/cold ./scripts/run_discrepancy.sh   # align_coeff 12.8 (seeds 2026, 2027), 128 (3 seeds)
 ```
-Result files carry the suffix `seedext` or `align<coeff>`; `make_tables.py` ignores suffixed files, so the main tables are unchanged. These 16 runs add 11.9 hours to the sum of `train_seconds` (about 2,000 to 3,600 s each, slower than a solo run because three ran at once), which brings the total over all 39 result files to 22.7 hours. A solo run takes about 20 minutes.
+Result files carry the suffix `seedext` or `align<coeff>`; `make_tables.py` ignores suffixed files, so the main tables are unchanged. These 16 runs add 11.9 hours to the sum of `train_seconds` (about 2,000 to 3,600 s each, slower than a solo run because three ran at once), which brings the total over all 39 result files to 22.7 hours. The three noise-augmented runs (suffix `noise_aug`, three in parallel, 2,333 to 2,554 s each, ablation H5) bring it to 24.7 hours over 42 files; `make_tables.py` reports them in a separate section. A solo run takes about 20 minutes.
 
 Outputs: `results/*.json` (one per run, containing args, metrics, gate statistics, latency, GPU memory, training seconds) and the two figures under `results/`. Reported tables must be generated from these files only.
 
@@ -73,4 +74,4 @@ PARALLEL=1 SKIP_CORE=1 SWEEPS=1 SEEDS=2025 DATA_PATH=processed_data_baby/cold ./
 A repeated run of the core grid reproduced every saved number exactly (timing and memory excluded).
 
 ## Not done
-- Noise-augmented-training ablation (not implemented).
+- Other noise-augmentation designs (rate, prototype scheme, noise on the image side) and other noise types in training.

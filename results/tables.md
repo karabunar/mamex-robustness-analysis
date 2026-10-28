@@ -60,3 +60,33 @@
 | 4.0 | 0.0667 | 0.0695 | 0.0667 | 0.0668 | 0.0819 | 0.0819 |
 | 8.0 | 0.0667 | 0.0691 | 0.0666 | 0.0669 | 0.0819 | 0.0819 |
 | 16.0 | 0.0667 | 0.0678 | 0.0666 | 0.0668 | 0.0819 | 0.0819 |
+
+## Noise-augmented training (hashtag noise on warm items' text in every training epoch, rate 0.4; cold-item test; seeds [2025, 2026, 2027]; mean ± sample std)
+
+| Condition | Recall@10 | Recall@20 | NDCG@10 | NDCG@20 |
+|---|---|---|---|---|
+| Noise-augmented model, clean text | 0.044 ± 0.002 | 0.072 ± 0.001 | 0.025 ± 0.002 | 0.032 ± 0.002 |
+| Noise-augmented model, noisy text | 0.036 ± 0.001 | 0.057 ± 0.001 | 0.020 ± 0.001 | 0.026 ± 0.001 |
+| Noise-augmented model, noisy text + VGR | 0.036 ± 0.001 | 0.057 ± 0.001 | 0.020 ± 0.000 | 0.026 ± 0.000 |
+| Noise-augmented model, clean text + VGR | 0.044 ± 0.002 | 0.072 ± 0.002 | 0.025 ± 0.002 | 0.032 ± 0.002 |
+
+### Paired differences per seed
+
+| Comparison | metric | per-seed differences | mean | seeds > 0 |
+|---|---|---|---|---|
+| noisy: noise-augmented - stress test | recall@20 | -0.0106, -0.0082, -0.0111 | -0.0100 | 0/3 |
+| noisy: noise-augmented - stress test | ndcg@20 | -0.0036, -0.0045, -0.0057 | -0.0046 | 0/3 |
+| clean: noise-augmented - clean baseline | recall@20 | -0.0079, -0.0026, -0.0050 | -0.0052 | 0/3 |
+| clean: noise-augmented - clean baseline | ndcg@20 | -0.0043, -0.0035, -0.0043 | -0.0040 | 0/3 |
+| noisy: clean baseline - noise-augmented (loss left) | recall@20 | +0.0259, +0.0167, +0.0200 | +0.0209 | 3/3 |
+| noisy: clean baseline - noise-augmented (loss left) | ndcg@20 | +0.0123, +0.0086, +0.0104 | +0.0104 | 3/3 |
+| VGR gain on noisy text: noise-augmented - clean-trained | recall@20 | -0.0042, -0.0016, -0.0034 | -0.0031 | 0/3 |
+| VGR gain on noisy text: noise-augmented - clean-trained | ndcg@20 | -0.0016, -0.0004, -0.0011 | -0.0010 | 0/3 |
+
+Selected gamma per seed: [16.0, 2.0, 8.0]
+
+| Gate (corrupted cold items) | w_v | w_t |
+|---|---|---|
+| clean | 0.014 ± 0.004 | 0.986 ± 0.004 |
+| noisy | 0.083 ± 0.048 | 0.917 ± 0.048 |
+| noisy_vgr | 0.099 ± 0.065 | 0.901 ± 0.065 |

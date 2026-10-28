@@ -141,6 +141,11 @@ class Loader4MM(torch.utils.data.Dataset):
         simulator = TextNoiseSimulator(CorruptionSpec(noise_rate, noise_type, seed))
         return simulator(self.text_feat, self.cold_item_index, self.warm_item_index)
 
+    def train_noisy_text_feat(self, noise_rate, noise_type='hashtag', seed=2025):
+        """Corrupted copy of text_feat for noise-augmented training: only warm items are touched, because cold items are never seen in training."""
+        simulator = TextNoiseSimulator(CorruptionSpec(noise_rate, noise_type, seed))
+        return simulator(self.text_feat, self.warm_item_index, self.warm_item_index)
+
     def getUserAllItems(self):
         """
         Get the items each user interacted with in the training and validation sets

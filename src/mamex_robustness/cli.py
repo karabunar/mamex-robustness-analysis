@@ -24,6 +24,9 @@ def parse_args(argv=None):
     parser.add_argument('--use_vgr', type=int, default=None)
     parser.add_argument('--train_with_vgr', type=int, default=0,
                         help='1 = also apply VGR during training (ablation); default trains clean and applies VGR at evaluation')
+    parser.add_argument('--train_noise_rate', type=float, default=0.0,
+                        help='ablation: corrupt this share of warm items\' text (--noise_type) in every training epoch; '
+                             'validation and model selection stay clean; 0 = train on clean text')
     parser.add_argument('--vgr_gamma', type=float, default=8.0)
     parser.add_argument('--gamma_grid', type=float, nargs='+', default=None,
                         help='select vgr_gamma on noisy validation data from these values')

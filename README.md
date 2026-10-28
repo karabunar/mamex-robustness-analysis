@@ -12,6 +12,7 @@ Does MAMEX's adaptive gate keep trusting a text embedding that has been corrupte
 - Test-time corruption of cold items' text features (hashtag / shuffle / gaussian). Training and validation stay clean.
 - VGR: `w_t ← w_t · sigmoid(γ · cos(img_emb, text_emb))`, renormalised to `w_v + w_t = 1`. No learned parameters, applied at evaluation on the clean-trained checkpoint (`--train_with_vgr 1` also applies it in training, as an ablation). γ is chosen on noisy validation data (`--gamma_grid`).
 - Controls: `--vgr_control shuffled` and `constant`.
+- Ablation: `--train_noise_rate` corrupts that share of warm items' text in every training epoch (default 0, off); results carry the suffix `noise_aug` and are reported apart from the main tables.
 - Evaluation report per run: clean / noisy, with and without VGR, gate weights, latency, GPU memory.
 
 ## Setup and commands
@@ -39,7 +40,7 @@ Test split, cold items only, hashtag noise on 40% of cold items, mean over seeds
 | Noisy text, VGR | 0.0701 | 0.0319 |
 | Noisy text, shuffled-cosine control | 0.0684 | 0.0313 |
 
-The published Baby numbers (Rec@20 0.0771, NDCG@20 0.0363) are listed separately in the report. VGR recovers about a third of the Recall@20 lost to the noise in all three seeds, and about half of that gain is also obtained by a control that does not use the image. 95% bootstrap intervals over test users, Success@K and MRR are in `results/ranking_metrics.md` (`python -m mamex_robustness.reporting.ranking_metrics`). The Recall@20 gain of VGR over the noisy model is +0.0033 [0.0024, 0.0044] and over the shuffled control +0.0017 [0.0011, 0.0023]; on clean text VGR costs about 0.0004 Recall@20 (interval includes 0) and 0.0002 NDCG@20 (interval just excludes 0). The intervals cover test-user sampling, not training-seed variance. Details, controls and failure analysis: `docs/report/report.tex`, section VII.
+The published Baby numbers (Rec@20 0.0771, NDCG@20 0.0363) are listed separately in the report. VGR recovers about a third of the Recall@20 lost to the noise in all three seeds, and about half of that gain is also obtained by a control that does not use the image. 95% bootstrap intervals over test users, Success@K and MRR are in `results/ranking_metrics.md` (`python -m mamex_robustness.reporting.ranking_metrics`). The Recall@20 gain of VGR over the noisy model is +0.0033 [0.0024, 0.0044] and over the shuffled control +0.0017 [0.0011, 0.0023]; on clean text VGR costs about 0.0004 Recall@20 (interval includes 0) and 0.0002 NDCG@20 (interval just excludes 0). The intervals cover test-user sampling, not training-seed variance. Training with corrupted warm-item text (H5, rate 0.4, three seeds) did not help: noisy Recall@20 0.0568 against 0.0668 for the clean-trained stress test, clean Recall@20 0.0725 against 0.0776, VGR gain +0.0003; the gate moves almost entirely to text and we did not find out why (`results/tables.md`, report section VII). Details, controls and failure analysis: `docs/report/report.tex`, section VII.
 
 ## Literature
 `docs/literature.md`, `docs/references.bib`.

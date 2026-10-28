@@ -2,7 +2,7 @@
 
 Written before any full-training result was read. Course rule: the rationale is stated *before* results are examined (YZM5110 §4).
 
-Written on 2026-10-16, before the first full-training results of 2026-10-17. Until then the only output seen was a 3-epoch smoke run (not trained, not interpreted); the seed-2025 grid was running but unread. The repository holds the final state as a single commit, so this date is the author's statement, not a commit timestamp.
+Written on 2026-10-16, before the first full-training results of 2026-10-17. Until then the only output seen was a 3-epoch smoke run (not trained, not interpreted); the seed-2025 grid was running but unread. The repository history was built on 27 October, after the experiments, so commit timestamps do not show when the hypotheses or the runs were made; this date is the author's statement.
 
 ## Research question
 
@@ -39,6 +39,22 @@ Setting: Amazon Baby, item cold-start (1410 cold items), text corrupted at test 
 *Claim.* Two controls, shuffled-cosine (each item receives another item's cosine) and constant (every item receives the mean VGR factor), recover less than VGR on noisy inputs.
 
 *What would make me doubt the rationale.* If either control matches VGR, the benefit is just "trust text less", and the cross-modal-grounding explanation is not supported.
+
+## H5 (added 2026-10-28, after H1 to H4 and the discrepancy runs were read, before any noise-augmented run)
+
+This ablation was listed as "not run" in the report. H1 to H4 and their results were known when H5 was written; no noise-augmented run existed. It is a post-hoc addition, not part of the original pre-registration.
+
+*Setting.* Same data, seeds 2025 to 2027, same test mask and `noise_rate` 0.4 hashtag noise at evaluation. In every training epoch 40% of the *warm* items' text is corrupted with the same hashtag simulator (new mask and new prototypes each epoch, seeded from `noise_seed + 20000 + epoch`; cold items are never seen in training, so the noise can only act on warm items). Validation, model selection and the evaluation conditions are unchanged: best epoch on clean validation NDCG, `gamma` on noisy validation data from the same grid. Command: `--mode improved --train_noise_rate 0.4 --gamma_grid 1 2 4 8 16 --suffix noise_aug`; the `noisy` block (VGR off) is the augmented model, the `noisy_vgr` block is VGR on top of it.
+
+*Caveat.* The training noise is the same family as the test noise, so this is the best case for augmentation. It does not show that augmentation helps against noise it has not seen; other noise types were not run.
+
+*H5a (augmentation reduces the loss).* The augmented model's noisy Recall@20 is higher than the stress-test model's noisy Recall@20 in all three seeds. I expect it to close most of the 0.0108 gap to the clean baseline, but I do not predict how much.
+
+*H5b (it costs clean accuracy).* The augmented model's clean Recall@20 is lower than the clean baseline's, because a share of the training text is wrong. I expect a loss smaller than the loss that noise causes to the baseline (0.0108) but I do not predict a size.
+
+*H5c (VGR adds less on top).* The gain of VGR over the noisy condition (clean-trained: +0.0033 Recall@20) is smaller on the augmented model, because the gate has already learned to discount text that disagrees with the image.
+
+*What would make me doubt it.* H5a: no gain, or a gain that does not have the same sign in all three seeds; then the clean-trained-baseline loss is not something training on noise removes, and the gate-shortcut story needs another explanation. H5b: a clean loss at or above 0.0108 means augmentation trades one failure for another. H5c: a VGR gain equal to or larger than +0.0033 means VGR and augmentation address different things. A negative result for any of them is a valid outcome and will be reported as such.
 
 ## Protocol commitments
 

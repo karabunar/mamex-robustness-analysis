@@ -129,3 +129,51 @@ def test_rendered_sensitivity_is_labelled_single_seed(tmp_path):
     main(['--results_dir', str(tmp_path), '--out', str(out), '--sweep_seed', '7'])
     text = out.read_text()
     assert 'single seed' in text and '| 0.8 |' in text and '| 4.0 |' in text and 'shuffled cosine' in text
+
+
+def aug_run(seed, values, selected=1.0):
+    r = run('improved', seed, values, selected=selected)
+    r['args'].update(suffix='noise_aug', train_noise_rate=0.4)
+    return r
+
+
+@pytest.fixture
+def with_ablation(tmp_path):
+    runs = []
+    for seed in (1, 2, 3):
+        base = {'clean': (0.10, 0.05), 'clean_vgr': (0.10, 0.05), 'noisy': (0.08, 0.04), 'noisy_vgr': (0.09, 0.045),
+                'noisy_vgr_shuffled': (0.08, 0.04), 'noisy_vgr_constant': (0.08, 0.04)}
+        runs += [run('baseline', seed, base, rate=0.0), run('stress_test', seed, base), run('improved', seed, base, selected=1.0)]
+        aug = {'clean': (0.095, 0.05), 'clean_vgr': (0.095, 0.05), 'noisy': (0.09, 0.045), 'noisy_vgr': (0.0915, 0.046),
+               'noisy_vgr_shuffled': (0.09, 0.045), 'noisy_vgr_constant': (0.09, 0.045)}
+        runs.append(aug_run(seed, aug))
+    write(tmp_path, runs)
+    return tmp_path
+
+
+def test_ablation_is_excluded_from_the_main_tables(with_ablation):
+    rows = {r['label']: r for r in build_tables(str(with_ablation))['accuracy']['rows']}
+    assert rows['Stress test (noisy text)']['n'] == 3 and rows['MAMEX-VGR (noisy text)']['n'] == 3
+
+
+def test_ablation_pairs_each_seed_with_the_clean_trained_runs(with_ablation):
+    from mamex_robustness.reporting.make_tables import build_ablation
+    ab = build_ablation(str(with_ablation))
+    assert ab['n'] == 3
+    gain = ab['paired']['noisy: noise-augmented - stress test']['recall@20']
+    assert gain['mean'] == pytest.approx(0.01) and gain['positive'] == 3
+    cost = ab['paired']['clean: noise-augmented - clean baseline']['recall@20']
+    assert cost['mean'] == pytest.approx(-0.005) and cost['positive'] == 0
+    vgr = ab['paired']['VGR gain on noisy text: noise-augmented - clean-trained']['recall@20']
+    assert vgr['mean'] == pytest.approx(0.0015 - 0.01)
+
+
+def test_ablation_is_empty_without_augmented_runs(tmp_path):
+    from mamex_robustness.reporting.make_tables import build_ablation
+    assert build_ablation(str(tmp_path)) is None
+
+
+def test_main_writes_the_ablation_section_only_when_runs_exist(with_ablation, tmp_path):
+    out = tmp_path / 'tables.md'
+    main(['--results_dir', str(with_ablation), '--out', str(out)])
+    assert '## Noise-augmented training' in out.read_text()

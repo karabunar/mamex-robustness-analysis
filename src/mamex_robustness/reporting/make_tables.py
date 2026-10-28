@@ -18,12 +18,16 @@ def _mean_std(values):
     return float(np.mean(values)), float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
 
 
-def _load(results_dir):
+def _load_all(results_dir):
     runs = []
     for path in sorted(glob.glob(os.path.join(results_dir, '*.json'))):
         with open(path) as f:
             runs.append(json.load(f))
-    return [r for r in runs if r['args'].get('suffix', 'default') == 'default']
+    return runs
+
+
+def _load(results_dir):
+    return [r for r in _load_all(results_dir) if r['args'].get('suffix', 'default') == 'default']
 
 
 def _rows(runs, rate, noise_type):
@@ -72,6 +76,60 @@ def build_tables(results_dir, noise_rate=0.4, noise_type='hashtag'):
         for block in ('clean', 'noisy', 'noisy_vgr'):
             gate[block] = {w: _mean_std([r['report']['gate'][block][w] for r in imp]) for w in ('w_v', 'w_t')}
     return {'accuracy': {'rows': rows}, 'paired': paired, 'cost': cost, 'gamma': gamma, 'gate': gate}
+
+
+def build_ablation(results_dir, noise_rate=0.4, noise_type='hashtag'):
+    """Noise-augmented training (suffix noise_aug) against the clean-trained runs of the same seeds; None if none exist."""
+    aug = {r['args']['seed']: r['report'] for r in _load_all(results_dir)
+           if r['args'].get('suffix') == 'noise_aug' and r['args']['noise_type'] == noise_type
+           and abs(r['args']['noise_rate'] - noise_rate) < 1e-9 and r['args'].get('train_noise_rate', 0) > 0}
+    if not aug:
+        return None
+    g = _rows(_load(results_dir), noise_rate, noise_type)
+    ref = {name: {r['args']['seed']: r['report'] for r in g[name]} for name in g}
+    seeds = sorted(s for s in aug if all(s in ref[n] for n in ref))
+    if not seeds:
+        return None
+    gain = lambda rep, kind, k: rep['noisy_vgr'][kind][k] - rep['noisy'][kind][k]
+    comparisons = {
+        'noisy: noise-augmented - stress test':
+            lambda s, kind, k: aug[s]['noisy'][kind][k] - ref['stress_test'][s]['noisy'][kind][k],
+        'clean: noise-augmented - clean baseline':
+            lambda s, kind, k: aug[s]['clean'][kind][k] - ref['baseline'][s]['clean'][kind][k],
+        'noisy: clean baseline - noise-augmented (loss left)':
+            lambda s, kind, k: ref['baseline'][s]['clean'][kind][k] - aug[s]['noisy'][kind][k],
+        'VGR gain on noisy text: noise-augmented - clean-trained':
+            lambda s, kind, k: gain(aug[s], kind, k) - gain(ref['improved'][s], kind, k)}
+    paired = {}
+    for name, fn in comparisons.items():
+        paired[name] = {}
+        for metric, (kind, k) in METRICS.items():
+            d = [fn(s, kind, k) for s in seeds]
+            paired[name][metric] = {'per_seed': d, 'mean': float(np.mean(d)), 'positive': sum(x > 0 for x in d), 'n': len(d)}
+    blocks = [('Noise-augmented model, clean text', 'clean'), ('Noise-augmented model, noisy text', 'noisy'),
+              ('Noise-augmented model, noisy text + VGR', 'noisy_vgr'), ('Noise-augmented model, clean text + VGR', 'clean_vgr')]
+    rows = [{'label': label, **{m: _mean_std([aug[s][block][kind][k] for s in seeds]) for m, (kind, k) in METRICS.items()}}
+            for label, block in blocks]
+    gamma = [aug[s]['gamma_selection']['selected'] for s in seeds if 'gamma_selection' in aug[s]]
+    gate = {b: {w: _mean_std([aug[s]['gate'][b][w] for s in seeds]) for w in ('w_v', 'w_t')}
+            for b in ('clean', 'noisy', 'noisy_vgr')}
+    return {'n': len(seeds), 'seeds': seeds, 'rows': rows, 'paired': paired, 'gamma': gamma, 'gate': gate}
+
+
+def render_ablation(ab, noise_rate, noise_type):
+    out = [f'## Noise-augmented training ({noise_type} noise on warm items\' text in every training epoch, rate {noise_rate}; '
+           f'cold-item test; seeds {ab["seeds"]}; mean ± sample std)', '',
+           '| Condition | Recall@10 | Recall@20 | NDCG@10 | NDCG@20 |', '|---|---|---|---|---|']
+    out += [f"| {r['label']} | " + ' | '.join(_pm(r[m]) for m in METRICS) + ' |' for r in ab['rows']]
+    out += ['', '### Paired differences per seed', '',
+            '| Comparison | metric | per-seed differences | mean | seeds > 0 |', '|---|---|---|---|---|']
+    for name, entry in ab['paired'].items():
+        for metric in ('recall@20', 'ndcg@20'):
+            d = entry[metric]
+            out.append(f"| {name} | {metric} | {', '.join(f'{x:+.4f}' for x in d['per_seed'])} | {d['mean']:+.4f} | {d['positive']}/{d['n']} |")
+    out += ['', f"Selected gamma per seed: {ab['gamma']}", '', '| Gate (corrupted cold items) | w_v | w_t |', '|---|---|---|']
+    out += [f'| {b} | {_pm(v["w_v"])} | {_pm(v["w_t"])} |' for b, v in ab['gate'].items()]
+    return out
 
 
 def build_sensitivity(results_dir, seed, noise_rate=0.4, noise_type='hashtag'):
@@ -160,6 +218,9 @@ def main(argv=None):
     text = render(tables, a.noise_rate, a.noise_type)
     sweep = build_sensitivity(a.results_dir, a.sweep_seed, a.noise_rate, a.noise_type)
     text += '\n' + '\n'.join(render_sensitivity(sweep, a.sweep_seed)) + '\n'
+    ablation = build_ablation(a.results_dir, a.noise_rate, a.noise_type)
+    if ablation:
+        text += '\n' + '\n'.join(render_ablation(ablation, a.noise_rate, a.noise_type)) + '\n'
     with open(a.out, 'w') as f:
         f.write(text)
     return tables
