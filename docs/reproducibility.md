@@ -46,7 +46,7 @@ Shapes: 7,050 items; 1,410 cold items; 19,442 training users; `image_feat` 7050Ã
 ## Commands
 ```
 export PYTHONPATH=src
-python -m pytest -q                       # 145 tests, no GPU needed
+python -m pytest -q                       # 149 tests, no GPU needed
 # short real-data check (3 epochs, not a reported result); delete the *_smoketest files it writes in results/
 python main.py --data_path processed_data_baby/cold --mode baseline --seed 1 --epoch 3 --eva_interval 1 --suffix smoketest
 DATA_PATH=processed_data_baby/cold SEEDS="2025 2026 2027" ./scripts/run_experiments.sh   # baseline, stress_test, improved per seed
@@ -103,6 +103,13 @@ for seed in 2025 2026 2027; do
 done
 ```
 The second loop also evaluates M3 and the oracle of H9. It trains nothing; it loads `results/ckpt291/checkpoints/*.pt` (gitignored) and writes `results/repair/*.json`, which `make_tables.py` turns into the section "Text repair" of `results/tables.md`. The three checkpoint runs took 2,548 to 2,747 s each (three in parallel), 2.2 hours in total.
+
+## Other noise and mismatched validation (H10)
+No training; same checkpoints. `scripts/run_repair.sh` runs the repairs for one noise setting (default hashtag 0.4), `GRID=1` for hashtag, shuffle and Gaussian at rates 0.2, 0.4 and 0.6 (validation noise equal to test noise) and `MISMATCH=1` for the four settings whose validation noise is fixed at hashtag 0.4:
+```
+PY=/path/to/venv/bin/python GRID=1 MISMATCH=1 DATA_PATH=processed_data_baby/cold ./scripts/run_repair.sh
+```
+Results go to `results/repair/` (mismatched ones carry `_val<type><rate>` in the name); `make_tables.py` writes the section "Text repair under other noise". The 13 settings (39 evaluations, three in parallel) took about 20 minutes.
 
 ## Not done
 - Other noise-augmentation designs (rate, prototype scheme, noise on the image side) and other noise types in training.

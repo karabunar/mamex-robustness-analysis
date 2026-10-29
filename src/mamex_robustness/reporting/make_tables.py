@@ -221,7 +221,8 @@ def build_repair(results_dir, noise_rate=0.4, noise_type='hashtag'):
     """Training-free text repairs on the saved clean-trained checkpoints (results/repair/*.json); None if there are none."""
     runs = {}
     for r in _load_all(os.path.join(results_dir, 'repair')):
-        if r['args']['noise_type'] == noise_type and abs(r['args']['noise_rate'] - noise_rate) < 1e-9:
+        if r['args']['noise_type'] == noise_type and abs(r['args']['noise_rate'] - noise_rate) < 1e-9 \
+                and r.get('validation', {'matched': True})['matched']:
             runs[r['args']['seed']] = r['report']
     if not runs:
         return None
@@ -271,6 +272,53 @@ def render_repair(rp):
     out += ['', f"Cost: nearest-neighbour search {c['neighbor_seconds'][0]:.2f} s once, building the repaired features {c['repair_seconds'][0]:.3f} s, "
                 f"extra memory {c['extra_mb'][0]:.0f} MB (computed from the array sizes), forward pass {c['forward_ms'][0]:.2f} ms without "
                 f"and {c['forward_ms_repaired'][0]:.2f} ms with repaired text; the cosine for M3 takes {c['cosine_seconds'][0]:.3f} s and {c['cosine_mb'][0]:.3f} MB."]
+    return out
+
+
+def build_repair_grid(results_dir):
+    """Per noise setting: gains of the repairs over the unrepaired model, per seed, with matched or mismatched validation noise."""
+    cells = {}
+    for r in _load_all(os.path.join(results_dir, 'repair')):
+        v = r.get('validation', {'noise_type': r['args']['noise_type'], 'noise_rate': r['args']['noise_rate'], 'matched': True})
+        key = (r['args']['noise_type'], round(r['args']['noise_rate'], 2), v['noise_type'], round(v['noise_rate'], 2), v['matched'])
+        cells.setdefault(key, {})[r['args']['seed']] = r['report']
+    if not cells:
+        return None
+    out = []
+    for (t, rate, vt, vr, matched), runs in sorted(cells.items(), key=lambda kv: (not kv[0][4], kv[0][0], kv[0][1])):
+        seeds = sorted(runs)
+        gain = lambda m: [runs[s]['noisy'][m]['recall'] - runs[s]['noisy']['unrepaired']['recall'] for s in seeds]
+        entry = {'noise_type': t, 'noise_rate': rate, 'val_type': vt, 'val_rate': vr, 'matched': matched, 'n': len(seeds),
+                 'unrepaired': float(np.mean([runs[s]['noisy']['unrepaired']['recall'] for s in seeds])),
+                 'clean_unrepaired': float(np.mean([runs[s]['clean']['unrepaired']['recall'] for s in seeds])),
+                 'gain': {m: gain(m) for m in ('vgr', 'm1', 'm3', 'm3_random', 'm3_shuffled')},
+                 'm3_plus_vgr': [runs[s]['noisy_plus_vgr']['m3']['recall'] - runs[s]['noisy']['unrepaired']['recall'] for s in seeds],
+                 'm3_minus_m1': [runs[s]['noisy']['m3']['recall'] - runs[s]['noisy']['m1']['recall'] for s in seeds],
+                 'm3_clean_change': [runs[s]['clean']['m3']['recall'] - runs[s]['clean']['unrepaired']['recall'] for s in seeds],
+                 'auroc_cosine': float(np.mean([runs[s]['auroc']['vgr_cosine'] for s in seeds]))}
+        out.append(entry)
+    return out
+
+
+def render_repair_grid(grid):
+    pos = lambda d: f"{np.mean(d):+.4f} ({sum(x > 0 for x in d)}/{len(d)})"
+    head = ['| Test noise | validation noise | unrepaired | VGR | M1 | M3 | M3, random | M3, permuted | M3 - M1 | M3 + VGR | M3 on clean | AUROC cosine |',
+            '|---|---|---|---|---|---|---|---|---|---|---|---|']
+    row = lambda e: (f"| {e['noise_type']} {e['noise_rate']} | {e['val_type']} {e['val_rate']} | {e['unrepaired']:.4f} | "
+                     + ' | '.join(pos(e['gain'][m]) for m in ('vgr', 'm1', 'm3', 'm3_random', 'm3_shuffled'))
+                     + f" | {pos(e['m3_minus_m1'])} | {pos(e['m3_plus_vgr'])} | {np.mean(e['m3_clean_change']):+.4f} | {e['auroc_cosine']:.3f} |")
+    out = ['## Text repair under other noise (Recall@20; gains over the unrepaired model, mean over seeds, seeds above 0 in brackets)', '']
+    matched = [e for e in grid if e['matched']]
+    out += ['Validation noise equal to the test noise:', ''] + head + [row(e) for e in matched]
+    mism = [e for e in grid if not e['matched']]
+    if mism:
+        ref = {(e['noise_type'], e['noise_rate']): e for e in matched}
+        out += ['', 'Validation noise fixed at hashtag 0.4, test noise different (share of the matched M3 gain kept in the last column):', '',
+                head[0] + ' M3 gain kept |', head[1] + '---|']
+        for e in mism:
+            m = ref.get((e['noise_type'], e['noise_rate']))
+            share = f"{np.mean(e['gain']['m3']) / np.mean(m['gain']['m3']):.0%}" if m and np.mean(m['gain']['m3']) else 'n/a'
+            out.append(row(e) + f' {share} |')
     return out
 
 
@@ -369,6 +417,9 @@ def main(argv=None):
     repair = build_repair(a.results_dir, a.noise_rate, a.noise_type)
     if repair:
         text += '\n' + '\n'.join(render_repair(repair)) + '\n'
+    grid = build_repair_grid(a.results_dir)
+    if grid:
+        text += '\n' + '\n'.join(render_repair_grid(grid)) + '\n'
     repr_probe = build_repr_probe(a.results_dir, a.noise_rate, a.noise_type)
     if repr_probe:
         text += '\n' + '\n'.join(render_repr_probe(repr_probe)) + '\n'

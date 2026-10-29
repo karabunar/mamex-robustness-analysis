@@ -133,6 +133,30 @@ H8 found that VGR's cosine of the two expert outputs separates corrupted from cl
 
 *Outcome (added 2026-10-29, after the runs).* H9a supported: M3 gains +0.0094 Recall@20 over the unrepaired model against M1's +0.0078, and is above M1 in all three seeds (+0.0029, +0.0005, +0.0011; the margin in seed 2026 is small). H9b supported: M3 beats the random-neighbour control (+0.0156, +0.0087, +0.0108) and the permuted-cosine control (+0.0049, +0.0021, +0.0043) in all three seeds; the random-neighbour version loses accuracy (-0.0023 on noisy, -0.0056 on clean text). H9c supported: on clean text M3 changes Recall@20 by +0.0016 on average (-0.0004, +0.0034, +0.0017). H9d supported: the cosine takes 0.017 s and 0.005 MB. The 'oracle' was meant as an upper bound but is not one: M3 beats it in all three seeds (+0.0022, +0.0036, +0.0020) and so does the blind blend M1 (+0.0078 against +0.0068), so repairing exactly the corrupted items is not the best use of the neighbour text; this was predicted wrongly. M3 selected q = 0.5 in all three seeds, not the true corruption rate 0.4. M3 followed by VGR reaches +0.0105 (about 96% of the loss, M3 alone about 86%). Earlier results in the same files did not change. The cosine was chosen as the detector after the AUROC of H8 was seen, and q is chosen on a validation set with noise at the stated rate, as VGR's gamma is.
 
+## H10 (added 2026-10-29, after the H9 results were read, before any H10 run)
+
+H8 and H9 tested the repairs on one noise family, the hashtag mix at rate 0.4, with validation data carrying the same noise. Two questions remain: do M1 and M3 work under other noise, and do they survive a validation set whose noise differs from the test noise, which is the realistic case. No new training: the same three saved checkpoints, all methods and controls of H8 and H9, parameters chosen on noisy validation data only, the test set never used for tuning, `k = 10` unchanged.
+
+*Setting 1 (generalisation, 9 settings).* Noise type in {hashtag, shuffle, gaussian} x rate in {0.2, 0.4, 0.6}, validation noise of the same type and rate as the test noise (hashtag 0.4 is the H8 and H9 result). `shuffle` replaces the text of a corrupted item by that of a random warm item; `gaussian` adds noise with standard deviation 0.8 times that of the text features (the defaults of the simulator).
+
+*Setting 2 (mismatch, 4 settings).* Validation noise is always hashtag at rate 0.4 (a validation set that carries the noise assumed when the method was set up); the test noise is hashtag 0.2, hashtag 0.6, shuffle 0.4 and gaussian 0.4. Settings are compared with the matched result of the same test noise from Setting 1.
+
+*H10a (M3 generalises).* In at least 8 of the 9 matched settings M3 beats the unrepaired model in all three seeds, and its mean gain exceeds VGR's mean gain.
+
+*H10b (the gain comes from the image neighbours and the flagged items).* In every matched setting M3's mean is above both its random-neighbour and permuted-cosine controls.
+
+*H10c (M3 against the blind blend).* M3's mean is at least M1's in at least 6 of the 9 matched settings.
+
+*H10d (more noise, more to repair).* For each noise type, M3's mean gain at rate 0.6 exceeds its mean gain at rate 0.2.
+
+*H10e (clean text stays safe).* In every matched setting the mean change of clean-text Recall@20 under M3 lies within +-0.003.
+
+*H10f (mismatch).* In each of the four mismatch settings M3 beats the unrepaired model in all three seeds and keeps at least 70% of its matched mean gain.
+
+*What would make me doubt the repairs.* M3 failing to beat the unrepaired model in all three seeds in two or more matched settings; a control within 0.001 of M3 in a setting; or less than half of the matched gain kept under mismatch. The detection AUROC of VGR's cosine is reported per setting, with no prediction. Where a method fails, the failing setting is reported next to the successes. A result against any of these is a valid outcome and will be reported as such.
+
+*Outcome (added 2026-10-29, after the runs).* H10a supported: in all nine matched settings M3 beats the unrepaired model in all three seeds and its mean gain exceeds VGR's. H10b supported on the means (M3 is above both controls in every matched setting), but the doubt condition 'a control within 0.001 of M3' is met once: gaussian 0.4, where M3 (+0.0039) is only +0.0004 above the permuted-cosine control (+0.0035). H10c not supported: M3's mean is at least M1's in only 5 of 9 settings; the blind blend M1 is better at rate 0.6 (hashtag +0.0135 against +0.0101, shuffle +0.0236 against +0.0224, gaussian +0.0077 against +0.0075) and for gaussian 0.4. H10d supported for all three types (M3 gain at rate 0.6 against 0.2: hashtag +0.0101/+0.0060, shuffle +0.0224/+0.0094, gaussian +0.0075/+0.0048). H10e supported: M3 changes clean-text Recall@20 by +0.0009 to +0.0019 in every setting. H10f supported: under a validation noise fixed at hashtag 0.4, M3 beats the unrepaired model in all three seeds in all four mismatch settings and keeps 99% to 116% of its matched gain (hashtag 0.2: 99%, hashtag 0.6: 104%, shuffle 0.4: 101%, gaussian 0.4: 116%). The AUROC of VGR's cosine is 0.993 or higher in every setting. M3 followed by VGR reaches 71% to 124% of the loss from corruption (at rate 0.2: 99% to 124%; at rate 0.6: 71% to 83%); above 100% means the repaired model on noisy text is above the unrepaired model on clean text.
+
 ## Protocol commitments
 
 - `γ` is chosen on the validation set (noisy validation, grid {1, 2, 4, 8, 16}); the test set is never used to tune the method. A test-set γ sweep, if shown, is a sensitivity table reported after selection.

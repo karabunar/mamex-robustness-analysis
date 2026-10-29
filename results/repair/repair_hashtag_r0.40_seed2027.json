@@ -46,6 +46,11 @@
     "save": 0
   },
   "checkpoint": "results/ckpt291/checkpoints/baseline_hashtag_r0.00_g8.0_seed2027.pt",
+  "validation": {
+    "noise_type": "hashtag",
+    "noise_rate": 0.4,
+    "matched": true
+  },
   "report": {
     "selection": {
       "vgr": {
@@ -275,12 +280,12 @@
       "vgr_cosine": 0.9991658702613886
     },
     "cost": {
-      "neighbor_seconds": 0.7004369130590931,
-      "repair_seconds": 0.01343589392490685,
+      "neighbor_seconds": 0.5849696919322014,
+      "repair_seconds": 0.012215111986733973,
       "extra_mb": 41.35162353515625,
-      "forward_ms": 12.19604954821989,
-      "forward_ms_repaired": 8.350557397352532,
-      "cosine_seconds": 0.02045581501442939,
+      "forward_ms": 13.243308599339798,
+      "forward_ms_repaired": 7.101424498250708,
+      "cosine_seconds": 0.019467700039967895,
       "cosine_mb": 0.00537872314453125
     },
     "n_corrupted_cold": 564,

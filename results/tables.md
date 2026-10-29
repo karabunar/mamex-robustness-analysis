@@ -183,7 +183,32 @@ Detection of the 564 corrupted cold items (AUROC per seed): agreement with the i
 | m3_shuffled | [0.75, 0.5, 20.0] | [1.0, 0.5, 20.0] | [0.75, 0.5, 20.0] |
 | oracle | 0.75 | 0.75 | 0.75 |
 
-Cost: nearest-neighbour search 0.69 s once, building the repaired features 0.013 s, extra memory 41 MB (computed from the array sizes), forward pass 8.99 ms without and 9.97 ms with repaired text; the cosine for M3 takes 0.016 s and 0.005 MB.
+Cost: nearest-neighbour search 0.54 s once, building the repaired features 0.012 s, extra memory 41 MB (computed from the array sizes), forward pass 10.39 ms without and 10.43 ms with repaired text; the cosine for M3 takes 0.016 s and 0.005 MB.
+
+## Text repair under other noise (Recall@20; gains over the unrepaired model, mean over seeds, seeds above 0 in brackets)
+
+Validation noise equal to the test noise:
+
+| Test noise | validation noise | unrepaired | VGR | M1 | M3 | M3, random | M3, permuted | M3 - M1 | M3 + VGR | M3 on clean | AUROC cosine |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| gaussian 0.2 | gaussian 0.2 | 0.0736 | +0.0009 (3/3) | +0.0039 (3/3) | +0.0048 (3/3) | -0.0038 (0/3) | +0.0021 (3/3) | +0.0009 (2/3) | +0.0050 (3/3) | +0.0016 | 0.995 |
+| gaussian 0.4 | gaussian 0.4 | 0.0721 | +0.0009 (3/3) | +0.0043 (3/3) | +0.0039 (3/3) | -0.0007 (1/3) | +0.0035 (3/3) | -0.0003 (1/3) | +0.0047 (3/3) | +0.0014 | 0.994 |
+| gaussian 0.6 | gaussian 0.6 | 0.0664 | +0.0024 (3/3) | +0.0077 (3/3) | +0.0075 (3/3) | -0.0025 (0/3) | +0.0042 (3/3) | -0.0001 (1/3) | +0.0079 (3/3) | +0.0013 | 0.993 |
+| hashtag 0.2 | hashtag 0.2 | 0.0716 | +0.0015 (3/3) | +0.0049 (3/3) | +0.0060 (3/3) | -0.0028 (0/3) | +0.0024 (3/3) | +0.0012 (2/3) | +0.0061 (3/3) | +0.0017 | 0.999 |
+| hashtag 0.4 | hashtag 0.4 | 0.0668 | +0.0033 (3/3) | +0.0078 (3/3) | +0.0094 (3/3) | -0.0023 (0/3) | +0.0056 (3/3) | +0.0015 (3/3) | +0.0105 (3/3) | +0.0016 | 0.999 |
+| hashtag 0.6 | hashtag 0.6 | 0.0599 | +0.0042 (3/3) | +0.0135 (3/3) | +0.0101 (3/3) | -0.0008 (0/3) | +0.0050 (3/3) | -0.0034 (0/3) | +0.0129 (3/3) | +0.0019 | 0.999 |
+| shuffle 0.2 | shuffle 0.2 | 0.0681 | +0.0028 (3/3) | +0.0065 (3/3) | +0.0094 (3/3) | +0.0006 (2/3) | +0.0038 (3/3) | +0.0029 (3/3) | +0.0094 (3/3) | +0.0016 | 1.000 |
+| shuffle 0.4 | shuffle 0.4 | 0.0604 | +0.0072 (3/3) | +0.0128 (3/3) | +0.0152 (3/3) | +0.0028 (3/3) | +0.0097 (3/3) | +0.0023 (3/3) | +0.0159 (3/3) | +0.0009 | 1.000 |
+| shuffle 0.6 | shuffle 0.6 | 0.0485 | +0.0101 (3/3) | +0.0236 (3/3) | +0.0224 (3/3) | +0.0077 (3/3) | +0.0093 (3/3) | -0.0012 (1/3) | +0.0241 (3/3) | +0.0009 | 1.000 |
+
+Validation noise fixed at hashtag 0.4, test noise different (share of the matched M3 gain kept in the last column):
+
+| Test noise | validation noise | unrepaired | VGR | M1 | M3 | M3, random | M3, permuted | M3 - M1 | M3 + VGR | M3 on clean | AUROC cosine | M3 gain kept |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| gaussian 0.4 | hashtag 0.4 | 0.0721 | +0.0009 (3/3) | +0.0036 (3/3) | +0.0046 (3/3) | -0.0059 (0/3) | +0.0034 (3/3) | +0.0010 (3/3) | +0.0055 (3/3) | +0.0016 | 0.994 | 116% |
+| hashtag 0.2 | hashtag 0.4 | 0.0716 | +0.0015 (3/3) | +0.0042 (3/3) | +0.0060 (3/3) | -0.0030 (0/3) | +0.0028 (3/3) | +0.0018 (3/3) | +0.0059 (3/3) | +0.0016 | 0.999 | 99% |
+| hashtag 0.6 | hashtag 0.4 | 0.0599 | +0.0042 (3/3) | +0.0135 (3/3) | +0.0106 (3/3) | -0.0010 (1/3) | +0.0071 (3/3) | -0.0029 (0/3) | +0.0126 (3/3) | +0.0016 | 0.999 | 104% |
+| shuffle 0.4 | hashtag 0.4 | 0.0604 | +0.0074 (3/3) | +0.0134 (3/3) | +0.0153 (3/3) | +0.0034 (3/3) | +0.0099 (3/3) | +0.0019 (3/3) | +0.0164 (3/3) | +0.0016 | 1.000 | 101% |
 
 ## Representation probe: warm and cold items in the space the gate reads (clean text; seeds [2025, 2026, 2027]; mean ± sample std)
 

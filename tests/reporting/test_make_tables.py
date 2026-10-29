@@ -309,3 +309,47 @@ def test_main_writes_the_repair_section(with_repair, tmp_path):
     main(['--results_dir', str(with_repair), '--out', str(out)])
     text = out.read_text()
     assert '## Text repair' in text and 'forward pass 7.00 ms without and 7.10 ms with' in text
+
+
+def grid_files(tmp_path, noise_type, rate, gains, val=None):
+    (tmp_path / 'repair').mkdir(exist_ok=True)
+    for seed in (1, 2, 3):
+        rec = {'args': {'seed': seed, 'noise_rate': rate, 'noise_type': noise_type}, 'report': repair_report(seed, gains)}
+        if val:
+            rec['validation'] = {'noise_type': val[0], 'noise_rate': val[1], 'matched': False}
+        suffix = f'_val{val[0]}{val[1]}' if val else ''
+        (tmp_path / 'repair' / f'repair_{noise_type}_{rate}_{seed}{suffix}.json').write_text(json.dumps(rec))
+
+
+@pytest.fixture
+def with_grid(tmp_path):
+    grid_files(tmp_path, 'hashtag', 0.4, {'unrepaired': 0.065, 'm3': 0.075, 'm1': 0.072})
+    grid_files(tmp_path, 'shuffle', 0.4, {'unrepaired': 0.060, 'm3': 0.070})
+    grid_files(tmp_path, 'shuffle', 0.4, {'unrepaired': 0.060, 'm3': 0.066}, val=('hashtag', 0.4))
+    return tmp_path
+
+
+def test_grid_separates_matched_and_mismatched_validation(with_grid):
+    from mamex_robustness.reporting.make_tables import build_repair_grid
+    grid = build_repair_grid(str(with_grid))
+    assert [(e['noise_type'], e['matched']) for e in grid] == [('hashtag', True), ('shuffle', True), ('shuffle', False)]
+    assert grid[0]['gain']['m3'] == pytest.approx([0.010] * 3) and grid[0]['m3_minus_m1'] == pytest.approx([0.003] * 3)
+    assert grid[2]['val_type'] == 'hashtag' and grid[2]['gain']['m3'] == pytest.approx([0.006] * 3)
+
+
+def test_main_table_ignores_mismatched_runs(with_grid):
+    from mamex_robustness.reporting.make_tables import build_repair
+    rp = build_repair(str(with_grid), 0.4, 'shuffle')
+    assert rp['paired']['noisy: m3 - unrepaired']['mean'] == pytest.approx(0.010)
+
+
+def test_grid_report_gives_the_share_of_the_matched_gain_kept(with_grid, tmp_path):
+    out = tmp_path / 'tables.md'
+    main(['--results_dir', str(with_grid), '--out', str(out)])
+    text = out.read_text()
+    assert '## Text repair under other noise' in text and '60%' in text
+
+
+def test_grid_is_none_without_runs(tmp_path):
+    from mamex_robustness.reporting.make_tables import build_repair_grid
+    assert build_repair_grid(str(tmp_path)) is None

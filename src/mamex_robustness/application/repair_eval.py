@@ -48,16 +48,18 @@ def _select(session, candidates, ks):
     return best, best_score
 
 
-def evaluate_repairs(session, noise_rate, noise_type, noise_seed, k=10, ks=(10, 20)):
+def evaluate_repairs(session, noise_rate, noise_type, noise_seed, k=10, ks=(10, 20), val_noise=None):
     """Compare the unrepaired model, VGR and two image-guided text repairs, all on the model's current (best) weights.
 
     Parameters are chosen on noisy validation data only (NDCG at ks[0]); the test set is read once per reported condition
-    and reports Recall and NDCG at ks[1].
+    and reports Recall and NDCG at ks[1]. val_noise = (noise_type, noise_rate) gives the validation data a corruption different
+    from the test one (a mismatch check); by default it is the same.
     """
     data = session.dataset
     cold = np.asarray(data.cold_item_index)
     noisy_test = data.noisy_text_feat(noise_rate, noise_type, noise_seed)
-    noisy_val = data.noisy_text_feat(noise_rate, noise_type, session.VAL_NOISE_SEED_OFFSET + noise_seed)
+    val_type, val_rate = val_noise if val_noise else (noise_type, noise_rate)
+    noisy_val = data.noisy_text_feat(val_rate, val_type, session.VAL_NOISE_SEED_OFFSET + noise_seed)
     clean = data.text_feat
     corrupted = (noisy_test[cold] != clean[cold]).any(axis=1)
 
