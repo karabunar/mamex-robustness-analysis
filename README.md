@@ -71,10 +71,32 @@ Added 2026-10-28, hypothesis written before the runs (`docs/hypotheses.md`). Six
 
 The collapse belongs to the cold items: the augmented model gives warm items about 0.44 and unseen cold items 0.99. We still do not know why. Against the same-environment control, the augmented model is lower in all three seeds (-0.0105 Recall@20 on noisy text, -0.0054 on clean text).
 
-**Caveat.** On 2026-10-28 the installed PyTorch was 2.14.1+cu130, not the pinned 2.9.1, and a rerun of a clean core baseline (seed 2026) gave Recall@20 0.0753 instead of the saved 0.0736. The code is not the cause (the pre-ablation code gives 0.0753 too); the PyTorch version was not tested as the cause. The saved core results are the earlier runs; see `docs/reproducibility.md`.
+**Caveat.** On 2026-10-28 the installed PyTorch was 2.14.1+cu130, not the pinned 2.9.1, and a rerun of a clean core baseline (seed 2026) gave Recall@20 0.0753 instead of the saved 0.0736. The code is not the cause (the pre-ablation code gives 0.0753 too); on 2026-10-29 the pinned 2.9.1 was installed in a separate environment and seed 2026 retrained there: it reproduces the saved baseline exactly (epoch 410, Recall@20 0.07361), so the version is the cause. Seeds 2025 and 2027 reproduce exactly there too (checkpoints in `results/ckpt291/`, weights not committed). The saved core results are the earlier runs; see `docs/reproducibility.md`.
+
+### Where the cold items sit (H7)
+Added 2026-10-29, hypothesis written before the runs. Six more runs (`--repr_probe 1`) measure where cold items sit in the space the gate reads. Cold items are **closer** to the warm centroid, not farther (distance ratio 0.72 in the augmented model, 0.78 in the control; H7a needed 1.2, not supported). Across cold items the distance hardly correlates with the text weight (Spearman +0.08 to +0.15; H7c needed 0.3, not supported). What differs is the gate's answer: logit difference text minus image on cold items is +11.7 in the augmented model against -0.14 on warm items (control +0.20 against -0.05). Cold items' expert outputs are also smaller, clearly so in the augmented model (image norm 1.16 against 1.93); whether that drives the gate was not tested. The cause is still unknown. The six runs equal the earlier gate-probe runs bit for bit.
+
+### Training-free text repair (H8)
+Added 2026-10-29, hypotheses written before the runs. On the three saved clean-trained checkpoints (`--save_final`, PyTorch 2.9.1, equal to the core baselines), part of each cold item's text is replaced by the mean text of its ten nearest warm items in image space (`python -m mamex_robustness.repair_cli`). The model, its weights and its forward pass do not change; parameters are chosen on noisy validation data only.
+
+| Recall@20, 40% of cold text corrupted | noisy text | gain over unrepaired (seeds > 0) | clean text |
+|---|---|---|---|
+| Unrepaired | 0.0668 | | 0.0776 |
+| VGR | 0.0701 | +0.0033 (3/3) | 0.0773 |
+| **M1, blind blend with image-neighbour text** | 0.0746 | **+0.0078 (3/3)** | 0.0769 |
+| M1, random neighbours (control) | 0.0666 | -0.0002 (1/3) | 0.0759 |
+| M2, gated by agreement | 0.0719 | +0.0052 (3/3) | 0.0784 |
+| M2, permuted agreement (control) | 0.0740 | +0.0072 (3/3) | 0.0784 |
+| M1, then VGR | 0.0764 | +0.0096 (3/3) | 0.0777 |
+
+- H8a supported (M2 beats the unrepaired model and VGR), H8e supported (0.6 s once, 41 MB, forward 7.9 against 8.1 ms), H8b, H8c and H8d not supported.
+- The image-neighbour text is what helps (random neighbours gain nothing). The per-item agreement score does not detect corrupted items (AUROC 0.51 to 0.71) and M2 loses to its permuted-score control, so the simple blind blend M1 is the best method: about 72% of the loss recovered alone, about 89% with VGR, no measurable clean-text cost.
+- VGR's own cosine detects the corrupted items almost perfectly (AUROC 0.999), so its limit is what it does with a detected item. Not tested.
+- One synthetic noise family (the same used throughout), one dataset, three seeds. The M2 random-neighbour control was added after the first run, on the same checkpoints.
+- Tables: `results/tables.md`; discussion: report section VII-E.
 
 ## Tests
-`python -m pytest -q` runs 118 tests in about 3 seconds on CPU, with a tiny synthetic dataset (no real data needed). They cover the noise simulator and its mask rules (18), the VGR gating and controls (8 + 4), the session evaluation and report (14 + 4), the CLI (9 + 5 end to end), the legacy behaviour of the upstream code before the restructure (5), result tables, plots, failure analysis and bootstrap metrics (13 + 8 + 8 + 6). The newest ones (18) check the ablation and its probe: training noise touches only warm items, at the requested share, is redrawn each epoch, never reaches validation or the stored model state, and does not overlap the test mask; the ablation table pairs every seed with its clean-trained runs and is left out when no augmented run exists. Status on 2026-10-28: 118 passed. The tests check the code, not the scientific results.
+`python -m pytest -q` runs 144 tests in about 3 seconds on CPU, with a tiny synthetic dataset (no real data needed). They cover the noise simulator and its mask rules (18), the VGR gating and controls (8 + 4), the session evaluation and report (14 + 4), the CLI (9 + 5 end to end), the legacy behaviour of the upstream code before the restructure (5), result tables, plots, failure analysis and bootstrap metrics (13 + 8 + 8 + 6). The newest ones (18) check the ablation and its probe: training noise touches only warm items, at the requested share, is redrawn each epoch, never reaches validation or the stored model state, and does not overlap the test mask; the ablation table pairs every seed with its clean-trained runs and is left out when no augmented run exists. Status on 2026-10-29: 144 passed. The tests check the code, not the scientific results.
 
 ## Literature
 `docs/literature.md`, `docs/references.bib`.

@@ -220,3 +220,89 @@ def test_main_writes_the_gate_probe_section(with_probe, tmp_path):
     out = tmp_path / 'tables.md'
     main(['--results_dir', str(with_probe), '--out', str(out)])
     assert '## Gate probe' in out.read_text()
+
+
+def repr_run(kind, seed, ratio, rho):
+    r = run('stress_test', seed, {})
+    g = lambda d, w: {'norm_v': 2.0, 'norm_t': 1.5, 'distance': d, 'logit_gap': 0.1, 'w_t': w}
+    r['args'].update(suffix=f'repr_{kind}', repr_probe=1)
+    r['report']['repr_probe'] = {'warm': g(2.0, 0.44), 'cold': g(2.0 * ratio, 0.98), 'distance_ratio': ratio,
+                                 'spearman_distance_wt_cold': rho}
+    return r
+
+
+@pytest.fixture
+def with_repr(tmp_path):
+    runs = []
+    for seed in (1, 2, 3):
+        runs.append(repr_run('aug', seed, 0.72, 0.1))
+        runs.append(repr_run('clean', seed, 0.78, None))
+    write(tmp_path, runs)
+    return tmp_path
+
+
+def test_repr_probe_collects_both_models_per_seed(with_repr):
+    from mamex_robustness.reporting.make_tables import build_repr_probe
+    rp = build_repr_probe(str(with_repr))
+    assert rp['seeds'] == [1, 2, 3]
+    assert rp['ratio']['aug'] == pytest.approx([0.72] * 3) and rp['ratio']['clean'] == pytest.approx([0.78] * 3)
+    assert rp['stats']['aug']['cold']['w_t'][0] == pytest.approx(0.98)
+    assert rp['spearman']['clean'] == [None, None, None]
+
+
+def test_repr_probe_is_none_without_both_kinds(tmp_path):
+    from mamex_robustness.reporting.make_tables import build_repr_probe
+    write(tmp_path, [repr_run('aug', 1, 0.7, 0.1)])
+    assert build_repr_probe(str(tmp_path)) is None
+
+
+def test_main_writes_the_repr_probe_section(with_repr, tmp_path):
+    out = tmp_path / 'tables.md'
+    main(['--results_dir', str(with_repr), '--out', str(out)])
+    assert '## Representation probe' in out.read_text()
+
+
+def repair_report(seed, gains):
+    """gains: Recall@20 of each method on noisy text; clean text is 0.08 for all."""
+    sc = lambda r: {'recall': r, 'ndcg': r / 2, 'ndcg_select': r / 2}
+    methods = ('unrepaired', 'vgr', 'm1', 'm1_random', 'm2', 'm2_random', 'm2_shuffled')
+    return {'noisy': {m: sc(gains.get(m, 0.07)) for m in methods}, 'clean': {m: sc(0.08) for m in methods},
+            'noisy_plus_vgr': {m: sc(0.078) for m in ('m1', 'm2')}, 'clean_plus_vgr': {m: sc(0.08) for m in ('m1', 'm2')},
+            'selection': {'vgr': {'gamma': 1.0, 'val_ndcg': 0.1}, 'm1': {'param': 0.75, 'val_ndcg': 0.1},
+                          'm2': {'param': [1.0, 5.0], 'val_ndcg': 0.1}},
+            'auroc': {'agreement': 0.6, 'vgr_cosine': 0.99},
+            'cost': {'neighbor_seconds': 0.5, 'repair_seconds': 0.01, 'extra_mb': 41.0, 'forward_ms': 7.0, 'forward_ms_repaired': 7.1},
+            'n_corrupted_cold': 10, 'k': 10, 'ks': [10, 20]}
+
+
+@pytest.fixture
+def with_repair(tmp_path):
+    (tmp_path / 'repair').mkdir()
+    for seed in (1, 2, 3):
+        rec = {'args': {'seed': seed, 'noise_rate': 0.4, 'noise_type': 'hashtag'},
+               'report': repair_report(seed, {'unrepaired': 0.065, 'vgr': 0.068, 'm1': 0.074, 'm1_random': 0.065})}
+        (tmp_path / 'repair' / f'repair_{seed}.json').write_text(json.dumps(rec))
+    return tmp_path
+
+
+def test_repair_table_pairs_every_method_with_the_unrepaired_model_and_its_controls(with_repair):
+    from mamex_robustness.reporting.make_tables import build_repair
+    rp = build_repair(str(with_repair))
+    assert rp['seeds'] == [1, 2, 3]
+    assert rp['paired']['noisy: m1 - unrepaired']['mean'] == pytest.approx(0.009)
+    assert rp['paired']['noisy: m1 - m1_random']['positive'] == 3
+    assert rp['paired']['noisy: m2 - m2_shuffled']['positive'] == 0
+    assert rp['rows']['clean']['vgr'][0] == pytest.approx(0.08)
+    assert rp['auroc']['vgr_cosine'] == [0.99] * 3
+
+
+def test_repair_table_is_none_without_runs(tmp_path):
+    from mamex_robustness.reporting.make_tables import build_repair
+    assert build_repair(str(tmp_path)) is None
+
+
+def test_main_writes_the_repair_section(with_repair, tmp_path):
+    out = tmp_path / 'tables.md'
+    main(['--results_dir', str(with_repair), '--out', str(out)])
+    text = out.read_text()
+    assert '## Text repair' in text and 'forward pass 7.00 ms without and 7.10 ms with' in text

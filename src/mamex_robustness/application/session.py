@@ -281,6 +281,36 @@ class Session(object):
                 'warm_uncorrupted': self._gate_mean(noisy, False, warm[~changed]),
                 'cold_clean': self._gate_mean(None, False, np.asarray(self.dataset.cold_item_index))}
 
+    @torch.no_grad()
+    def representation_probe(self):
+        """Where the cold items sit relative to the warm items in the space the gate reads (model must hold the best state).
+
+        Clean text, eval mode. The gate input is the concatenation of the image and text expert outputs.
+        """
+        from scipy.stats import spearmanr
+        self.model.eval()
+        image_emb, _ = self.model.image_linear(self.model.image_feat)
+        text_emb, _ = self.model.text_linear(self.model.text_feat)
+        combined = torch.cat([image_emb, text_emb], dim=1)
+        logits = self.model.gate(combined)
+        weights = torch.softmax(logits, dim=1)
+        warm = torch.as_tensor(np.asarray(self.dataset.warm_item_index), device=self.env.device)
+        cold = torch.as_tensor(np.asarray(self.dataset.cold_item_index), device=self.env.device)
+        distance = (combined - combined[warm].mean(0)).norm(dim=1)
+
+        def group(index):
+            return {'norm_v': float(image_emb[index].norm(dim=1).mean()),
+                    'norm_t': float(text_emb[index].norm(dim=1).mean()),
+                    'distance': float(distance[index].mean()),
+                    'logit_gap': float((logits[index, 1] - logits[index, 0]).mean()),
+                    'w_t': float(weights[index, 1].mean())}
+
+        warm_stats, cold_stats = group(warm), group(cold)
+        rho = spearmanr(distance[cold].cpu().numpy(), weights[cold, 1].cpu().numpy())[0]
+        return {'warm': warm_stats, 'cold': cold_stats,
+                'distance_ratio': cold_stats['distance'] / warm_stats['distance'],
+                'spearman_distance_wt_cold': None if np.isnan(rho) else float(rho)}
+
     def final_report(self, noise_rate, noise_type, noise_seed, gamma_grid=None):
         """Evaluate the best-validation model on the test set under clean/noisy text, with and without VGR.
 
@@ -323,6 +353,13 @@ class Session(object):
         if selection is not None:
             report['gamma_selection'] = selection
         return report
+
+    def save_best(self, path):
+        """Write the best-validation weights (kept in memory during training) to path; nothing is written without a best state."""
+        if self.best_state is None:
+            raise RuntimeError('no best state to save: train first')
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        torch.save(self.best_state, path)
 
     def save_ckpt(self, path):
         torch.save(self.model.state_dict(), path)

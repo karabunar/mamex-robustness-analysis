@@ -177,6 +177,100 @@ def render_gate_probe(gp):
     return out
 
 
+def build_repr_probe(results_dir, noise_rate=0.4, noise_type='hashtag'):
+    """Where cold items sit relative to warm items in the space the gate reads (suffix repr_aug / repr_clean); None if no such runs."""
+    by_kind = {'aug': {}, 'clean': {}}
+    for r in _load_all(results_dir):
+        suffix = r['args'].get('suffix', '')
+        if suffix in ('repr_aug', 'repr_clean') and r['args']['noise_type'] == noise_type \
+                and abs(r['args']['noise_rate'] - noise_rate) < 1e-9 and 'repr_probe' in r['report']:
+            by_kind[suffix.split('_')[1]][r['args']['seed']] = r['report']['repr_probe']
+    seeds = sorted(set(by_kind['aug']) & set(by_kind['clean']))
+    if not seeds:
+        return None
+    group = lambda k, g, name: _mean_std([by_kind[k][s][g][name] for s in seeds])
+    return {'seeds': seeds,
+            'stats': {k: {g: {n: group(k, g, n) for n in ('norm_v', 'norm_t', 'distance', 'logit_gap', 'w_t')}
+                          for g in ('warm', 'cold')} for k in by_kind},
+            'ratio': {k: [by_kind[k][s]['distance_ratio'] for s in seeds] for k in by_kind},
+            'spearman': {k: [by_kind[k][s]['spearman_distance_wt_cold'] for s in seeds] for k in by_kind}}
+
+
+def render_repr_probe(rp):
+    out = [f'## Representation probe: warm and cold items in the space the gate reads (clean text; seeds {rp["seeds"]}; mean ± sample std)', '',
+           '| Model | group | norm (image) | norm (text) | distance to warm centroid | gate logit (text - image) | w_t |',
+           '|---|---|---|---|---|---|---|']
+    for k, label in (('aug', 'Noise-augmented training'), ('clean', 'Clean training (control)')):
+        for g in ('warm', 'cold'):
+            st = rp['stats'][k][g]
+            out.append(f"| {label} | {g} | " + ' | '.join(_pm(st[n]) for n in ('norm_v', 'norm_t', 'distance', 'logit_gap', 'w_t')) + ' |')
+    out += ['', '| Model | cold / warm distance ratio per seed | Spearman(distance, w_t) over cold items per seed |', '|---|---|---|']
+    for k, label in (('aug', 'Noise-augmented training'), ('clean', 'Clean training (control)')):
+        out.append(f"| {label} | {', '.join(f'{x:.3f}' for x in rp['ratio'][k])} | "
+                   f"{', '.join('n/a' if x is None else f'{x:+.3f}' for x in rp['spearman'][k])} |")
+    return out
+
+
+REPAIR_METHODS = (('unrepaired', 'Unrepaired'), ('vgr', 'VGR'), ('m1', 'M1 blind blend'), ('m1_random', 'M1, random neighbours'),
+                  ('m2', 'M2 gated repair'), ('m2_random', 'M2, random neighbours'), ('m2_shuffled', 'M2, permuted agreement'))
+
+
+def build_repair(results_dir, noise_rate=0.4, noise_type='hashtag'):
+    """Training-free text repairs on the saved clean-trained checkpoints (results/repair/*.json); None if there are none."""
+    runs = {}
+    for r in _load_all(os.path.join(results_dir, 'repair')):
+        if r['args']['noise_type'] == noise_type and abs(r['args']['noise_rate'] - noise_rate) < 1e-9:
+            runs[r['args']['seed']] = r['report']
+    if not runs:
+        return None
+    seeds = sorted(runs)
+    series = lambda cond, m: [runs[s][cond][m]['recall'] for s in seeds]
+    rows = {}
+    for cond in ('noisy', 'clean'):
+        rows[cond] = {m: _mean_std(series(cond, m)) for m, _ in REPAIR_METHODS}
+    for cond in ('noisy_plus_vgr', 'clean_plus_vgr'):
+        rows[cond] = {m: _mean_std(series(cond, m)) for m in ('m1', 'm2')}
+    base = {c: series(c, 'unrepaired') for c in ('noisy', 'clean')}
+    paired = {}
+    for cond, group, methods in (('noisy', 'noisy', [m for m, _ in REPAIR_METHODS[1:]]), ('clean', 'clean', [m for m, _ in REPAIR_METHODS[1:]]),
+                                 ('noisy', 'noisy_plus_vgr', ['m1', 'm2']), ('clean', 'clean_plus_vgr', ['m1', 'm2'])):
+        for m in methods:
+            d = [a - b for a, b in zip(series(group, m), base[cond])]
+            paired[f'{group}: {m} - unrepaired'] = {'per_seed': d, 'mean': float(np.mean(d)), 'positive': sum(x > 0 for x in d), 'n': len(d)}
+    for m, c in (('m1', 'm1_random'), ('m2', 'm2_random'), ('m2', 'm2_shuffled')):
+        d = [a - b for a, b in zip(series('noisy', m), series('noisy', c))]
+        paired[f'noisy: {m} - {c}'] = {'per_seed': d, 'mean': float(np.mean(d)), 'positive': sum(x > 0 for x in d), 'n': len(d)}
+    return {'seeds': seeds, 'rows': rows, 'paired': paired,
+            'selection': {s: runs[s]['selection'] for s in seeds},
+            'auroc': {k: [runs[s]['auroc'][k] for s in seeds] for k in ('agreement', 'vgr_cosine')},
+            'cost': {k: _mean_std([runs[s]['cost'][k] for s in seeds]) for k in runs[seeds[0]]['cost']},
+            'n_corrupted': runs[seeds[0]]['n_corrupted_cold']}
+
+
+def render_repair(rp):
+    out = [f'## Text repair on saved clean-trained checkpoints (seeds {rp["seeds"]}; Recall@20; mean ± sample std)', '',
+           '| Method | noisy text | clean text |', '|---|---|---|']
+    for m, label in REPAIR_METHODS:
+        out.append(f"| {label} | {_pm(rp['rows']['noisy'][m])} | {_pm(rp['rows']['clean'][m])} |")
+    for m, label in (('m1', 'M1 blind blend, then VGR'), ('m2', 'M2 gated repair, then VGR')):
+        out.append(f"| {label} | {_pm(rp['rows']['noisy_plus_vgr'][m])} | {_pm(rp['rows']['clean_plus_vgr'][m])} |")
+    out += ['', 'Paired differences per seed (Recall@20):', '', '| Comparison | per-seed differences | mean | seeds > 0 |', '|---|---|---|---|']
+    for name, d in rp['paired'].items():
+        out.append(f"| {name} | {', '.join(f'{x:+.4f}' for x in d['per_seed'])} | {d['mean']:+.4f} | {d['positive']}/{d['n']} |")
+    out += ['', f"Detection of the {rp['n_corrupted']} corrupted cold items (AUROC per seed): agreement with the image neighbours' text "
+                f"{', '.join(f'{x:.3f}' for x in rp['auroc']['agreement'])}; VGR cosine of the expert outputs "
+                f"{', '.join(f'{x:.3f}' for x in rp['auroc']['vgr_cosine'])}.", '',
+            '| Selected on noisy validation data | ' + ' | '.join(f'seed {s}' for s in rp['seeds']) + ' |', '|---|' + '---|' * len(rp['seeds'])]
+    for key in rp['selection'][rp['seeds'][0]]:
+        vals = [rp['selection'][s][key] for s in rp['seeds']]
+        out.append(f'| {key} | ' + ' | '.join(str(v.get("param", v.get("gamma"))) for v in vals) + ' |')
+    c = rp['cost']
+    out += ['', f"Cost: nearest-neighbour search {c['neighbor_seconds'][0]:.2f} s once, building the repaired features {c['repair_seconds'][0]:.3f} s, "
+                f"extra memory {c['extra_mb'][0]:.0f} MB (computed from the array sizes), forward pass {c['forward_ms'][0]:.2f} ms without "
+                f"and {c['forward_ms_repaired'][0]:.2f} ms with repaired text."]
+    return out
+
+
 def build_sensitivity(results_dir, seed, noise_rate=0.4, noise_type='hashtag'):
     """Single-seed noise-rate and gamma sweeps. Only runs that exist are listed."""
     runs = [r for r in _load(results_dir) if r['args']['seed'] == seed and r['args']['noise_type'] == noise_type
@@ -269,6 +363,12 @@ def main(argv=None):
     probe = build_gate_probe(a.results_dir, a.noise_rate, a.noise_type)
     if probe:
         text += '\n' + '\n'.join(render_gate_probe(probe)) + '\n'
+    repair = build_repair(a.results_dir, a.noise_rate, a.noise_type)
+    if repair:
+        text += '\n' + '\n'.join(render_repair(repair)) + '\n'
+    repr_probe = build_repr_probe(a.results_dir, a.noise_rate, a.noise_type)
+    if repr_probe:
+        text += '\n' + '\n'.join(render_repr_probe(repr_probe)) + '\n'
     with open(a.out, 'w') as f:
         f.write(text)
     return tables

@@ -72,6 +72,49 @@ H5 showed that models trained on corrupted warm-item text put almost all gate we
 
 A result against any of these is a valid outcome and will be reported as such.
 
+## H7 (added 2026-10-29, after the gate-probe results of H6 were read, before the representation-probe runs)
+
+H6 showed that in the noise-augmented model the text weight is 0.99 on cold items but about 0.44 on warm items, while the clean-trained control stays near 0.5 on both. The balance explanation failed, so the cause is open. Candidate explanation to test (untested when written): cold items' expert outputs lie outside the region of embedding space the gate saw in training, and the augmented gate extrapolates to a high text weight there.
+
+*Setting.* Same seeds 2025 to 2027, `--mode stress_test --noise_rate 0.4 --repr_probe 1`, once with `--train_noise_rate 0.4` (suffix `repr_aug`) and once with 0 (suffix `repr_clean`). After training, on clean text and with the best-validation model, the probe takes the image and text expert outputs of every item (the 128-d vectors the gate reads, concatenated to 256-d) and measures: the mean norm of each; the Euclidean distance of each item's concatenated vector to the centroid of the warm items, averaged over warm items and over cold items, and their ratio cold over warm; the mean gate logit difference (text minus image) on each group; and the Spearman correlation across cold items between the distance to the warm centroid and `w_t`. Training is unchanged, no VGR, no test-set tuning, the probe reads no labels.
+
+*H7a (cold items are far from the warm region).* In the augmented model the cold-over-warm distance ratio is at least 1.2 in all three seeds.
+
+*H7b (the shift is a property of the data, not of augmentation).* In each seed the augmented model's ratio is within 20% of the control's ratio. If the augmented ratio is more than 1.2 times the control's, augmentation itself moved cold items away from the warm region.
+
+*H7c (distance drives the text weight).* In the augmented model the Spearman correlation between a cold item's distance to the warm centroid and its `w_t` is above 0.3 in all three seeds.
+
+*What would make me doubt the explanation.* A ratio below 1.1 in the augmented model (cold items sit as close to the warm centroid as warm items do, so the gate is not extrapolating in this sense), or a Spearman correlation below 0.1 (the text weight does not vary with distance across cold items). Distance to the warm centroid is one crude measure of "outside the training region"; a pass would not prove the explanation, and a failure would only rule out this measure. As in H6, the augmented runs' metrics must equal the earlier `noise_aug` runs and the control's must equal the earlier `gateprobe_clean` runs (same environment, deterministic), otherwise the run is not repeatable.
+
+A result against any of these is a valid outcome and will be reported as such.
+
+*Outcome (added 2026-10-29, after the runs).* H7a not supported: the cold-over-warm distance ratio is 0.72 in the augmented model (0.720, 0.719, 0.734), below the 1.1 set as a doubt condition, so cold items sit closer to the warm centroid, not farther. H7b supported but empty: the control's ratio is 0.78, within 20% of the augmented one. H7c not supported: the Spearman correlations are +0.08, +0.15 and +0.14 (above 0.3 was needed). The candidate explanation, in this measure, is not what the numbers show. Repeatability held: the six runs equal the earlier gate-probe runs bit for bit.
+
+## H8 (added 2026-10-29, after H5 to H7 were read and after VGR's small gain was known, before any repair run)
+
+VGR only lowers the text weight of a suspect item; it puts nothing in its place, and its gain is small (+0.0033 Recall@20 on noisy text). Two training-free repairs are tested on the three saved clean-trained checkpoints (PyTorch 2.9.1, equal to the core baselines; `--save_final`), evaluated on the same noisy cold-item text as before (hashtag, rate 0.4, mask seed = training seed).
+
+*Setting.* Both repairs build a replacement for an item's text from the text of its k = 10 nearest *warm* items in image space (cosine on the normalised image features), `t_knn`, and change the text features before the model reads them; the model, its weights and its forward pass are unchanged. k is fixed in advance, not tuned.
+- *Blind blend (M1):* `t' = (1 - lam) * t + lam * t_knn` for every cold item; `lam` from {0.25, 0.5, 0.75, 1.0}.
+- *Gated repair (M2):* the agreement `a_i = cos(t_i, t_knn_i)` of the raw features; `lam_i = lam_max * sigmoid(-g * (a_i - median(a)))` over the cold items (the median needs no knowledge of the noise rate); `lam_max` from {0.5, 1.0}, `g` from {5, 10, 20}.
+- Parameters are chosen on noisy *validation* data (validation mask = seed + 10000, NDCG@10, as for VGR's gamma); the test set is never used for tuning. VGR is re-evaluated on the same checkpoints with the same grid {1, 2, 4, 8, 16} as the comparison, and each repair is also reported followed by VGR (gamma reselected after the repair).
+- *Controls:* M1 and M2 with k random warm items instead of the image neighbours (same `lam`, same grid), and M2 with the agreement scores permuted across items (fixed seed).
+- *Conditions:* noisy text and clean text (a repair that damages clean text is a cost), Recall@20 and NDCG@20, paired per seed. *Resources:* time to build the repaired features and the extra memory, measured, and the forward time with and without repair.
+
+*H8a (the gated repair helps more than VGR).* M2 raises noisy-text Recall@20 above the unrepaired model in all three seeds, and its mean gain exceeds VGR's mean gain measured in the same evaluation.
+
+*H8b (the gain comes from the image-guided neighbours and from per-item detection).* M2 beats both its controls (random neighbours; permuted agreement) in all three seeds on noisy text.
+
+*H8c (blind repair costs clean text, gated repair costs less).* On clean text, M1 loses more than 0.003 Recall@20 against the unrepaired model (mean over seeds) and M2 loses less than 0.002.
+
+*H8d (the agreement score detects corrupted items).* The AUROC of `-a_i` for separating corrupted from uncorrupted cold items is at least 0.7 in all three seeds. For reference the same AUROC is computed for VGR's score (the cosine of the two expert outputs); no order between the two is predicted.
+
+*H8e (cost).* Building the repaired features takes under 1 s per evaluation and under 100 MB extra memory; the forward time of the model is unchanged (within 5%).
+
+*What would make me doubt the repair.* A mean M2 gain below VGR's; a control within 0.001 Recall@20 of M2 (the gain would not come from image guidance or detection); an AUROC below 0.6. Known weakness of the design: the corruption is the one used throughout this study, a mix of the item's text with one of five warm-item vectors, so a repair that works here need not work on real bad text; the same limit applies to VGR. A result against any of these is a valid outcome and will be reported as such.
+
+*Outcome (added 2026-10-29, after the runs).* H8a supported: M2 beats the unrepaired model in all three seeds (+0.0077, +0.0010, +0.0068; mean +0.0052) and VGR's mean gain (+0.0033). H8b not supported: both image-guided repairs beat their random-neighbour controls in all three seeds (M1 by +0.0080, M2 by +0.0047), but M2 loses to its permuted-agreement control in all three (-0.0020), so the image-guided neighbours help and the per-item agreement score does not. H8c not supported: the blind blend M1 costs clean text only -0.0007 Recall@20 (more than 0.003 was predicted); M2 changes it by +0.0008. H8d not supported: the AUROC of the agreement score is 0.511, 0.559 and 0.708 (0.7 needed in all three; below the 0.6 doubt limit in two), while VGR's cosine reaches 0.999 in all three seeds. H8e supported: 0.60 s once for the neighbour search, 0.015 s to build the repaired features, 41 MB, forward pass 7.88 ms against 8.07 ms (+2.4%). The blind blend M1 was not a headline hypothesis and is the best method: +0.0078 over the unrepaired model in all three seeds, +0.0096 when followed by VGR (about 89% of the loss from corruption). The M2 random-neighbour control named above was left out of the first run by oversight and added afterwards on the same checkpoints; no other number changed. The unrepaired and VGR numbers equal the saved runs exactly.
+
 ## Protocol commitments
 
 - `γ` is chosen on the validation set (noisy validation, grid {1, 2, 4, 8, 16}); the test set is never used to tune the method. A test-set γ sweep, if shown, is a sensitivity table reported after selection.

@@ -29,6 +29,10 @@ def parse_args(argv=None):
                              'validation and model selection stay clean; 0 = train on clean text')
     parser.add_argument('--gate_probe', type=int, default=0,
                         help='1 = also report the mean gate weights on warm items split by a training-style corruption (rate --noise_rate)')
+    parser.add_argument('--save_final', type=int, default=0,
+                        help='1 = write the best-validation weights to <results_dir>/checkpoints/<result name>.pt after training')
+    parser.add_argument('--repr_probe', type=int, default=0,
+                        help='1 = also report where cold items sit relative to warm items in the space the gate reads')
     parser.add_argument('--vgr_gamma', type=float, default=8.0)
     parser.add_argument('--gamma_grid', type=float, nargs='+', default=None,
                         help='select vgr_gamma on noisy validation data from these values')
@@ -120,6 +124,8 @@ def main(argv=None):
     report = my_session.final_report(args.noise_rate, args.noise_type, args.noise_seed, args.gamma_grid)
     if args.gate_probe:
         report['gate_probe'] = my_session.gate_probe(args.noise_rate, args.noise_type, args.noise_seed)
+    if args.repr_probe:
+        report['repr_probe'] = my_session.representation_probe()
     if 'gamma_selection' in report:
         args.vgr_gamma = report['gamma_selection']['selected']
     gamma_tag = 'sel' if args.gamma_grid else str(args.vgr_gamma)
@@ -131,6 +137,10 @@ def main(argv=None):
     with open(result_path, 'w') as f:
         json.dump({'args': vars(args), 'report': report, 'best_epoch': my_session.best_epoch,
                    'train_seconds': train_seconds}, f, indent=2)
+    if args.save_final:
+        ckpt_path = os.path.join(args.results_dir, 'checkpoints', result_name + '.pt')
+        my_session.save_best(ckpt_path)
+        tool.cprint(f'checkpoint written to {ckpt_path}')
     diag = my_session.diagnostics(args.noise_rate, args.noise_type, args.noise_seed)
     diag_dir = os.path.join(args.results_dir, 'diagnostics')
     os.makedirs(diag_dir, exist_ok=True)
