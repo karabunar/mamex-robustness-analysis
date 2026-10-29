@@ -111,5 +111,15 @@ PY=/path/to/venv/bin/python GRID=1 MISMATCH=1 DATA_PATH=processed_data_baby/cold
 ```
 Results go to `results/repair/` (mismatched ones carry `_val<type><rate>` in the name); `make_tables.py` writes the section "Text repair under other noise". The 13 settings (39 evaluations, three in parallel) took about 20 minutes.
 
+## Five-seed check of the repair (H11)
+Seeds 2028 and 2029 were trained in the pinned environment like the first three and evaluated with the default setting (hashtag 0.4):
+```
+for seed in 2028 2029; do
+  python main.py --data_path processed_data_baby/cold --mode baseline --seed $seed --save_final 1 --results_dir results/ckpt291
+done
+PY=/path/to/venv/bin/python SEEDS="2028 2029" DATA_PATH=processed_data_baby/cold ./scripts/run_repair.sh
+```
+Both retrained baselines equal the earlier seed-extension runs of the discrepancy investigation, made in the 2.14.1 environment (best epochs 320 and 730; Recall@20 0.07673 and 0.07393), so these two seeds reproduce across both environments. Training took 968 s and 1,656 s.
+
 ## Not done
 - Other noise-augmentation designs (rate, prototype scheme, noise on the image side) and other noise types in training.
