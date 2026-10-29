@@ -34,6 +34,11 @@ def gated_lambda(agree, lam_max, steepness):
     return lam_max / (1.0 + np.exp(steepness * (agree - np.median(agree))))
 
 
+def quantile_lambda(score, lam_max, steepness, q):
+    """Repair weight that is high for items whose score lies below the q-quantile of the scores and about 0 above it."""
+    return lam_max / (1.0 + np.exp(-steepness * (np.quantile(score, q) - score)))
+
+
 def blend(text, neighbor, lam):
     """Unit rows of (1 - lam) * unit(text) + lam * neighbor; lam is a scalar or one weight per row."""
     lam = np.asarray(lam, dtype=np.float64)

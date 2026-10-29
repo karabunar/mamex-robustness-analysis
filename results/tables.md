@@ -118,8 +118,13 @@ Same-environment comparison (both models from the gate-probe runs; paired per se
 | M2 gated repair | 0.072 ± 0.005 | 0.078 ± 0.003 |
 | M2, random neighbours | 0.067 ± 0.003 | 0.077 ± 0.005 |
 | M2, permuted agreement | 0.074 ± 0.004 | 0.078 ± 0.002 |
+| M3 cosine-gated repair | 0.076 ± 0.003 | 0.079 ± 0.002 |
+| M3, random neighbours | 0.064 ± 0.002 | 0.072 ± 0.005 |
+| M3, permuted cosine | 0.072 ± 0.001 | 0.079 ± 0.003 |
+| Oracle (true mask; upper bound only) | 0.074 ± 0.004 | 0.078 ± 0.004 |
 | M1 blind blend, then VGR | 0.076 ± 0.002 | 0.078 ± 0.003 |
 | M2 gated repair, then VGR | 0.074 ± 0.004 | 0.079 ± 0.004 |
+| M3 cosine-gated repair, then VGR | 0.077 ± 0.003 | 0.079 ± 0.003 |
 
 Paired differences per seed (Recall@20):
 
@@ -131,19 +136,34 @@ Paired differences per seed (Recall@20):
 | noisy: m2 - unrepaired | +0.0077, +0.0010, +0.0068 | +0.0052 | 3/3 |
 | noisy: m2_random - unrepaired | -0.0007, -0.0005, +0.0025 | +0.0004 | 1/3 |
 | noisy: m2_shuffled - unrepaired | +0.0100, +0.0045, +0.0071 | +0.0072 | 3/3 |
+| noisy: m3 - unrepaired | +0.0114, +0.0080, +0.0088 | +0.0094 | 3/3 |
+| noisy: m3_random - unrepaired | -0.0043, -0.0007, -0.0020 | -0.0023 | 0/3 |
+| noisy: m3_shuffled - unrepaired | +0.0065, +0.0059, +0.0044 | +0.0056 | 3/3 |
+| noisy: oracle - unrepaired | +0.0092, +0.0043, +0.0068 | +0.0068 | 3/3 |
 | clean: vgr - unrepaired | +0.0001, -0.0011, -0.0000 | -0.0004 | 1/3 |
 | clean: m1 - unrepaired | -0.0030, -0.0008, +0.0015 | -0.0007 | 1/3 |
 | clean: m1_random - unrepaired | +0.0003, -0.0013, -0.0041 | -0.0017 | 1/3 |
 | clean: m2 - unrepaired | -0.0005, +0.0014, +0.0015 | +0.0008 | 2/3 |
 | clean: m2_random - unrepaired | +0.0007, -0.0011, -0.0005 | -0.0003 | 1/3 |
 | clean: m2_shuffled - unrepaired | -0.0018, +0.0025, +0.0015 | +0.0007 | 2/3 |
+| clean: m3 - unrepaired | -0.0004, +0.0034, +0.0017 | +0.0016 | 2/3 |
+| clean: m3_random - unrepaired | -0.0047, -0.0050, -0.0069 | -0.0056 | 0/3 |
+| clean: m3_shuffled - unrepaired | +0.0009, +0.0032, +0.0012 | +0.0017 | 3/3 |
+| clean: oracle - unrepaired | +0.0000, +0.0000, +0.0000 | +0.0000 | 0/3 |
 | noisy_plus_vgr: m1 - unrepaired | +0.0107, +0.0095, +0.0087 | +0.0096 | 3/3 |
 | noisy_plus_vgr: m2 - unrepaired | +0.0100, +0.0042, +0.0075 | +0.0072 | 3/3 |
+| noisy_plus_vgr: m3 - unrepaired | +0.0126, +0.0088, +0.0100 | +0.0105 | 3/3 |
 | clean_plus_vgr: m1 - unrepaired | -0.0022, +0.0006, +0.0019 | +0.0001 | 2/3 |
 | clean_plus_vgr: m2 - unrepaired | -0.0006, +0.0007, +0.0025 | +0.0009 | 2/3 |
+| clean_plus_vgr: m3 - unrepaired | -0.0002, +0.0021, +0.0017 | +0.0012 | 2/3 |
 | noisy: m1 - m1_random | +0.0087, +0.0087, +0.0067 | +0.0080 | 3/3 |
 | noisy: m2 - m2_random | +0.0084, +0.0015, +0.0043 | +0.0047 | 3/3 |
 | noisy: m2 - m2_shuffled | -0.0024, -0.0035, -0.0003 | -0.0020 | 0/3 |
+| noisy: m3 - m3_random | +0.0156, +0.0087, +0.0108 | +0.0117 | 3/3 |
+| noisy: m3 - m3_shuffled | +0.0049, +0.0021, +0.0043 | +0.0038 | 3/3 |
+| noisy: m3 - m1 | +0.0029, +0.0005, +0.0011 | +0.0015 | 3/3 |
+| noisy: m3 - oracle | +0.0022, +0.0036, +0.0020 | +0.0026 | 3/3 |
+| noisy: m3 - vgr | +0.0070, +0.0057, +0.0054 | +0.0060 | 3/3 |
 
 Detection of the 564 corrupted cold items (AUROC per seed): agreement with the image neighbours' text 0.511, 0.559, 0.708; VGR cosine of the expert outputs 0.999, 0.999, 0.999.
 
@@ -157,8 +177,13 @@ Detection of the 564 corrupted cold items (AUROC per seed): agreement with the i
 | m2_plus_vgr | 2.0 | 1.0 | 2.0 |
 | m2_random | [0.5, 5.0] | [0.5, 5.0] | [0.5, 5.0] |
 | m2_shuffled | [1.0, 5.0] | [1.0, 5.0] | [1.0, 5.0] |
+| m3 | [1.0, 0.5, 20.0] | [0.75, 0.5, 20.0] | [0.75, 0.5, 20.0] |
+| m3_plus_vgr | 2.0 | 1.0 | 1.0 |
+| m3_random | [0.75, 0.5, 20.0] | [0.75, 0.4, 20.0] | [0.75, 0.5, 20.0] |
+| m3_shuffled | [0.75, 0.5, 20.0] | [1.0, 0.5, 20.0] | [0.75, 0.5, 20.0] |
+| oracle | 0.75 | 0.75 | 0.75 |
 
-Cost: nearest-neighbour search 0.60 s once, building the repaired features 0.015 s, extra memory 41 MB (computed from the array sizes), forward pass 7.88 ms without and 8.07 ms with repaired text.
+Cost: nearest-neighbour search 0.69 s once, building the repaired features 0.013 s, extra memory 41 MB (computed from the array sizes), forward pass 8.99 ms without and 9.97 ms with repaired text; the cosine for M3 takes 0.016 s and 0.005 MB.
 
 ## Representation probe: warm and cold items in the space the gate reads (clean text; seeds [2025, 2026, 2027]; mean ± sample std)
 

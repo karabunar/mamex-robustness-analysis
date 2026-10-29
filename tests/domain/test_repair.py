@@ -70,3 +70,11 @@ def test_auroc():
     assert repair.auroc(np.array([1, 2, 3, 4.0]), pos) == 0.0
     assert repair.auroc(np.ones(4), pos) == 0.5
     assert np.isnan(repair.auroc(np.ones(3), np.array([True, True, True])))
+
+
+def test_quantile_lambda_repairs_items_below_the_quantile():
+    score = np.linspace(0.0, 1.0, 11)
+    lam = repair.quantile_lambda(score, 1.0, 50.0, 0.4)
+    assert lam[0] > 0.99 and lam[-1] < 0.01
+    assert (lam > 0.5).sum() == 4 and lam[4] == pytest.approx(0.5)
+    assert repair.quantile_lambda(score, 0.75, 50.0, 0.4)[0] == pytest.approx(0.75, abs=1e-3)

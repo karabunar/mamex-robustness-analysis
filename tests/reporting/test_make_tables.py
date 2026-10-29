@@ -265,13 +265,14 @@ def test_main_writes_the_repr_probe_section(with_repr, tmp_path):
 def repair_report(seed, gains):
     """gains: Recall@20 of each method on noisy text; clean text is 0.08 for all."""
     sc = lambda r: {'recall': r, 'ndcg': r / 2, 'ndcg_select': r / 2}
-    methods = ('unrepaired', 'vgr', 'm1', 'm1_random', 'm2', 'm2_random', 'm2_shuffled')
+    methods = ('unrepaired', 'vgr', 'm1', 'm1_random', 'm2', 'm2_random', 'm2_shuffled', 'm3', 'm3_random', 'm3_shuffled', 'oracle')
     return {'noisy': {m: sc(gains.get(m, 0.07)) for m in methods}, 'clean': {m: sc(0.08) for m in methods},
-            'noisy_plus_vgr': {m: sc(0.078) for m in ('m1', 'm2')}, 'clean_plus_vgr': {m: sc(0.08) for m in ('m1', 'm2')},
+            'noisy_plus_vgr': {m: sc(0.078) for m in ('m1', 'm2', 'm3')}, 'clean_plus_vgr': {m: sc(0.08) for m in ('m1', 'm2', 'm3')},
             'selection': {'vgr': {'gamma': 1.0, 'val_ndcg': 0.1}, 'm1': {'param': 0.75, 'val_ndcg': 0.1},
                           'm2': {'param': [1.0, 5.0], 'val_ndcg': 0.1}},
             'auroc': {'agreement': 0.6, 'vgr_cosine': 0.99},
-            'cost': {'neighbor_seconds': 0.5, 'repair_seconds': 0.01, 'extra_mb': 41.0, 'forward_ms': 7.0, 'forward_ms_repaired': 7.1},
+            'cost': {'neighbor_seconds': 0.5, 'repair_seconds': 0.01, 'extra_mb': 41.0, 'forward_ms': 7.0, 'forward_ms_repaired': 7.1,
+                     'cosine_seconds': 0.01, 'cosine_mb': 0.005},
             'n_corrupted_cold': 10, 'k': 10, 'ks': [10, 20]}
 
 
@@ -280,7 +281,7 @@ def with_repair(tmp_path):
     (tmp_path / 'repair').mkdir()
     for seed in (1, 2, 3):
         rec = {'args': {'seed': seed, 'noise_rate': 0.4, 'noise_type': 'hashtag'},
-               'report': repair_report(seed, {'unrepaired': 0.065, 'vgr': 0.068, 'm1': 0.074, 'm1_random': 0.065})}
+               'report': repair_report(seed, {'unrepaired': 0.065, 'vgr': 0.068, 'm1': 0.074, 'm1_random': 0.065, 'm3': 0.077, 'm3_random': 0.066, 'oracle': 0.078})}
         (tmp_path / 'repair' / f'repair_{seed}.json').write_text(json.dumps(rec))
     return tmp_path
 
@@ -292,6 +293,8 @@ def test_repair_table_pairs_every_method_with_the_unrepaired_model_and_its_contr
     assert rp['paired']['noisy: m1 - unrepaired']['mean'] == pytest.approx(0.009)
     assert rp['paired']['noisy: m1 - m1_random']['positive'] == 3
     assert rp['paired']['noisy: m2 - m2_shuffled']['positive'] == 0
+    assert rp['paired']['noisy: m3 - m1']['mean'] == pytest.approx(0.003)
+    assert rp['paired']['noisy: m3 - oracle']['positive'] == 0
     assert rp['rows']['clean']['vgr'][0] == pytest.approx(0.08)
     assert rp['auroc']['vgr_cosine'] == [0.99] * 3
 

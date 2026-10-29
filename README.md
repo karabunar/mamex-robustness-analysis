@@ -88,15 +88,21 @@ Added 2026-10-29, hypotheses written before the runs. On the three saved clean-t
 | M2, gated by agreement | 0.0719 | +0.0052 (3/3) | 0.0784 |
 | M2, permuted agreement (control) | 0.0740 | +0.0072 (3/3) | 0.0784 |
 | M1, then VGR | 0.0764 | +0.0096 (3/3) | 0.0777 |
+| **M3, repair only items flagged by VGR's cosine (H9)** | 0.0761 | **+0.0094 (3/3)** | 0.0792 |
+| M3, random neighbours (control) | 0.0644 | -0.0023 (0/3) | 0.0721 |
+| M3, permuted cosine (control) | 0.0724 | +0.0056 (3/3) | 0.0794 |
+| M3, then VGR | 0.0772 | +0.0105 (3/3) | 0.0789 |
+| Oracle: true corruption mask (not an upper bound) | 0.0735 | +0.0068 (3/3) | 0.0776 |
 
 - H8a supported (M2 beats the unrepaired model and VGR), H8e supported (0.6 s once, 41 MB, forward 7.9 against 8.1 ms), H8b, H8c and H8d not supported.
 - The image-neighbour text is what helps (random neighbours gain nothing). The per-item agreement score does not detect corrupted items (AUROC 0.51 to 0.71) and M2 loses to its permuted-score control, so the simple blind blend M1 is the best method: about 72% of the loss recovered alone, about 89% with VGR, no measurable clean-text cost.
 - VGR's own cosine detects the corrupted items almost perfectly (AUROC 0.999), so its limit is what it does with a detected item. Not tested.
 - One synthetic noise family (the same used throughout), one dataset, three seeds. The M2 random-neighbour control was added after the first run, on the same checkpoints.
+- **H9** (written after H8, before the runs): repairing only the items VGR's cosine flags beats the blind blend in all three seeds (+0.0094 against +0.0078, margins +0.0029, +0.0005, +0.0011), beats both controls in all three, changes clean text by +0.0016, and the cosine costs 0.017 s. With VGR it reaches +0.0105, about 96% of the loss (M3 alone about 86%). The oracle that repairs exactly the corrupted items is *not* an upper bound: M3 and M1 both beat it, so the neighbour text also helps clean items (prediction wrong). The cosine was chosen as detector after seeing its AUROC in H8, and `q` is chosen on validation data that carry the noise rate, as VGR's gamma is.
 - Tables: `results/tables.md`; discussion: report section VII-E.
 
 ## Tests
-`python -m pytest -q` runs 144 tests in about 3 seconds on CPU, with a tiny synthetic dataset (no real data needed). They cover the noise simulator and its mask rules (18), the VGR gating and controls (8 + 4), the session evaluation and report (14 + 4), the CLI (9 + 5 end to end), the legacy behaviour of the upstream code before the restructure (5), result tables, plots, failure analysis and bootstrap metrics (13 + 8 + 8 + 6). The newest ones (18) check the ablation and its probe: training noise touches only warm items, at the requested share, is redrawn each epoch, never reaches validation or the stored model state, and does not overlap the test mask; the ablation table pairs every seed with its clean-trained runs and is left out when no augmented run exists. Status on 2026-10-29: 144 passed. The tests check the code, not the scientific results.
+`python -m pytest -q` runs 145 tests in about 3 seconds on CPU, with a tiny synthetic dataset (no real data needed). They cover the noise simulator and its mask rules (18), the VGR gating and controls (8 + 4), the session evaluation and report (14 + 4), the CLI (9 + 5 end to end), the legacy behaviour of the upstream code before the restructure (5), result tables, plots, failure analysis and bootstrap metrics (13 + 8 + 8 + 6). The newest ones (18) check the ablation and its probe: training noise touches only warm items, at the requested share, is redrawn each epoch, never reaches validation or the stored model state, and does not overlap the test mask; the ablation table pairs every seed with its clean-trained runs and is left out when no augmented run exists. Status on 2026-10-29: 145 passed. The tests check the code, not the scientific results.
 
 ## Literature
 `docs/literature.md`, `docs/references.bib`.

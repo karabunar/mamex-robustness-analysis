@@ -212,7 +212,9 @@ def render_repr_probe(rp):
 
 
 REPAIR_METHODS = (('unrepaired', 'Unrepaired'), ('vgr', 'VGR'), ('m1', 'M1 blind blend'), ('m1_random', 'M1, random neighbours'),
-                  ('m2', 'M2 gated repair'), ('m2_random', 'M2, random neighbours'), ('m2_shuffled', 'M2, permuted agreement'))
+                  ('m2', 'M2 gated repair'), ('m2_random', 'M2, random neighbours'), ('m2_shuffled', 'M2, permuted agreement'),
+                  ('m3', 'M3 cosine-gated repair'), ('m3_random', 'M3, random neighbours'), ('m3_shuffled', 'M3, permuted cosine'),
+                  ('oracle', 'Oracle (true mask; upper bound only)'))
 
 
 def build_repair(results_dir, noise_rate=0.4, noise_type='hashtag'):
@@ -229,15 +231,16 @@ def build_repair(results_dir, noise_rate=0.4, noise_type='hashtag'):
     for cond in ('noisy', 'clean'):
         rows[cond] = {m: _mean_std(series(cond, m)) for m, _ in REPAIR_METHODS}
     for cond in ('noisy_plus_vgr', 'clean_plus_vgr'):
-        rows[cond] = {m: _mean_std(series(cond, m)) for m in ('m1', 'm2')}
+        rows[cond] = {m: _mean_std(series(cond, m)) for m in ('m1', 'm2', 'm3')}
     base = {c: series(c, 'unrepaired') for c in ('noisy', 'clean')}
     paired = {}
     for cond, group, methods in (('noisy', 'noisy', [m for m, _ in REPAIR_METHODS[1:]]), ('clean', 'clean', [m for m, _ in REPAIR_METHODS[1:]]),
-                                 ('noisy', 'noisy_plus_vgr', ['m1', 'm2']), ('clean', 'clean_plus_vgr', ['m1', 'm2'])):
+                                 ('noisy', 'noisy_plus_vgr', ['m1', 'm2', 'm3']), ('clean', 'clean_plus_vgr', ['m1', 'm2', 'm3'])):
         for m in methods:
             d = [a - b for a, b in zip(series(group, m), base[cond])]
             paired[f'{group}: {m} - unrepaired'] = {'per_seed': d, 'mean': float(np.mean(d)), 'positive': sum(x > 0 for x in d), 'n': len(d)}
-    for m, c in (('m1', 'm1_random'), ('m2', 'm2_random'), ('m2', 'm2_shuffled')):
+    for m, c in (('m1', 'm1_random'), ('m2', 'm2_random'), ('m2', 'm2_shuffled'), ('m3', 'm3_random'), ('m3', 'm3_shuffled'),
+                 ('m3', 'm1'), ('m3', 'oracle'), ('m3', 'vgr')):
         d = [a - b for a, b in zip(series('noisy', m), series('noisy', c))]
         paired[f'noisy: {m} - {c}'] = {'per_seed': d, 'mean': float(np.mean(d)), 'positive': sum(x > 0 for x in d), 'n': len(d)}
     return {'seeds': seeds, 'rows': rows, 'paired': paired,
@@ -252,7 +255,7 @@ def render_repair(rp):
            '| Method | noisy text | clean text |', '|---|---|---|']
     for m, label in REPAIR_METHODS:
         out.append(f"| {label} | {_pm(rp['rows']['noisy'][m])} | {_pm(rp['rows']['clean'][m])} |")
-    for m, label in (('m1', 'M1 blind blend, then VGR'), ('m2', 'M2 gated repair, then VGR')):
+    for m, label in (('m1', 'M1 blind blend, then VGR'), ('m2', 'M2 gated repair, then VGR'), ('m3', 'M3 cosine-gated repair, then VGR')):
         out.append(f"| {label} | {_pm(rp['rows']['noisy_plus_vgr'][m])} | {_pm(rp['rows']['clean_plus_vgr'][m])} |")
     out += ['', 'Paired differences per seed (Recall@20):', '', '| Comparison | per-seed differences | mean | seeds > 0 |', '|---|---|---|---|']
     for name, d in rp['paired'].items():
@@ -267,7 +270,7 @@ def render_repair(rp):
     c = rp['cost']
     out += ['', f"Cost: nearest-neighbour search {c['neighbor_seconds'][0]:.2f} s once, building the repaired features {c['repair_seconds'][0]:.3f} s, "
                 f"extra memory {c['extra_mb'][0]:.0f} MB (computed from the array sizes), forward pass {c['forward_ms'][0]:.2f} ms without "
-                f"and {c['forward_ms_repaired'][0]:.2f} ms with repaired text."]
+                f"and {c['forward_ms_repaired'][0]:.2f} ms with repaired text; the cosine for M3 takes {c['cosine_seconds'][0]:.3f} s and {c['cosine_mb'][0]:.3f} MB."]
     return out
 
 

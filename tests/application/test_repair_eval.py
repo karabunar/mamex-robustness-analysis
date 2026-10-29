@@ -11,15 +11,16 @@ def report(session):
 
 
 def test_every_method_is_reported_in_every_condition(report):
-    methods = {'unrepaired', 'vgr', 'm1', 'm1_random', 'm2', 'm2_random', 'm2_shuffled'}
+    methods = {'unrepaired', 'vgr', 'm1', 'm1_random', 'm2', 'm2_random', 'm2_shuffled', 'm3', 'm3_random', 'm3_shuffled', 'oracle'}
     assert methods <= set(report['noisy']) and methods <= set(report['clean'])
-    assert set(report['noisy_plus_vgr']) == {'m1', 'm2'} == set(report['clean_plus_vgr'])
+    assert set(report['noisy_plus_vgr']) == {'m1', 'm2', 'm3'} == set(report['clean_plus_vgr'])
 
 
 def test_selected_parameters_come_from_the_grids(report):
     sel = report['selection']
     assert sel['m1']['param'] in repair_eval.LAM_GRID and sel['m1_random']['param'] in repair_eval.LAM_GRID
-    assert tuple(sel['m2']['param']) in repair_eval.GATED_GRID
+    assert tuple(sel['m2']['param']) in repair_eval.GATED_GRID and tuple(sel['m3']['param']) in repair_eval.COSINE_GRID
+    assert sel['oracle']['param'] in repair_eval.LAM_GRID
     assert sel['vgr']['gamma'] in repair_eval.GAMMA_GRID
 
 
@@ -34,7 +35,7 @@ def test_unrepaired_scores_equal_a_direct_evaluation(report, session):
 def test_detection_and_cost_are_reported(report, session):
     assert 0.0 <= report['auroc']['agreement'] <= 1.0 and 0.0 <= report['auroc']['vgr_cosine'] <= 1.0
     assert report['n_corrupted_cold'] == 5
-    assert report['cost']['extra_mb'] > 0 and report['cost']['forward_ms'] > 0 and report['cost']['forward_ms_repaired'] > 0
+    assert report['cost']['extra_mb'] > 0 and report['cost']['forward_ms'] > 0 and report['cost']['forward_ms_repaired'] > 0 and report['cost']['cosine_seconds'] > 0
 
 
 def test_evaluation_leaves_the_model_as_it_was(report, session):

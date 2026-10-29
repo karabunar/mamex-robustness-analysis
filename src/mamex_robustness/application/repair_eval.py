@@ -7,6 +7,7 @@ from mamex_robustness.domain import repair
 
 LAM_GRID = (0.25, 0.5, 0.75, 1.0)
 GATED_GRID = tuple((lam_max, g) for lam_max in (0.5, 1.0) for g in (5.0, 10.0, 20.0))
+COSINE_GRID = tuple((lam_max, q, g) for lam_max in (0.75, 1.0) for q in (0.3, 0.4, 0.5) for g in (20.0, 50.0))
 GAMMA_GRID = (1.0, 2.0, 4.0, 8.0, 16.0)
 CONTROL_SEED = 0
 
@@ -77,12 +78,22 @@ def evaluate_repairs(session, noise_rate, noise_type, noise_seed, k=10, ks=(10, 
             new = repair.blend(rows, knn, repair.gated_lambda(repair.agreement(rows, knn), *param))
         elif method == 'm2_random':  # the same rule with random warm items in place of the image neighbours
             new = repair.blend(rows, rand, repair.gated_lambda(repair.agreement(rows, rand), *param))
+        elif method in ('m3', 'm3_random', 'm3_shuffled'):
+            score = _vgr_cosine(session, text)[cold]
+            if method == 'm3_shuffled':
+                score = score[permutation]
+            lam = repair.quantile_lambda(score, param[0], param[2], param[1])
+            new = repair.blend(rows, rand if method == 'm3_random' else knn, lam)
+        elif method == 'oracle':  # upper bound: the true corruption mask, not available to a real method
+            is_corrupted = (rows != clean[cold]).any(axis=1)
+            new = repair.blend(rows, knn, np.where(is_corrupted, param, 0.0))
         else:  # m2_shuffled: the agreement scores are handed to the wrong items
             lam = repair.gated_lambda(repair.agreement(rows, knn), *param)[permutation]
             new = repair.blend(rows, knn, lam)
         return repair.with_cold_rows(text, cold, new)
 
-    grids = {'m1': LAM_GRID, 'm1_random': LAM_GRID, 'm2': GATED_GRID, 'm2_random': GATED_GRID, 'm2_shuffled': GATED_GRID}
+    grids = {'m1': LAM_GRID, 'm1_random': LAM_GRID, 'm2': GATED_GRID, 'm2_random': GATED_GRID, 'm2_shuffled': GATED_GRID,
+             'm3': COSINE_GRID, 'm3_random': COSINE_GRID, 'm3_shuffled': COSINE_GRID, 'oracle': LAM_GRID}
     out = {'selection': {}, 'noisy': {}, 'clean': {}, 'noisy_plus_vgr': {}, 'clean_plus_vgr': {}}
 
     out['noisy']['unrepaired'] = _scores(session, noisy_test, 'test', ks=ks)
@@ -97,7 +108,7 @@ def evaluate_repairs(session, noise_rate, noise_type, noise_seed, k=10, ks=(10, 
         out['selection'][method] = {'param': list(param) if isinstance(param, tuple) else param, 'val_ndcg': val}
         out['noisy'][method] = _scores(session, build(method, noisy_test, param), 'test', ks=ks)
         out['clean'][method] = _scores(session, build(method, clean, param), 'test', ks=ks)
-        if method in ('m1', 'm2'):
+        if method in ('m1', 'm2', 'm3'):
             g, gval = _select_gamma(session, {g: build(method, noisy_val, param) for g in GAMMA_GRID}, ks)
             out['selection'][method + '_plus_vgr'] = {'gamma': g, 'val_ndcg': gval}
             out['noisy_plus_vgr'][method] = _scores(session, build(method, noisy_test, param), 'test', True, g, ks)
@@ -108,6 +119,9 @@ def evaluate_repairs(session, noise_rate, noise_type, noise_seed, k=10, ks=(10, 
     build_seconds = time.perf_counter() - started
     out['auroc'] = {'agreement': repair.auroc(-repair.agreement(noisy_test[cold], knn), corrupted),
                     'vgr_cosine': repair.auroc(-_vgr_cosine(session, noisy_test)[cold], corrupted)}
+    started = time.perf_counter()
+    cosine = _vgr_cosine(session, noisy_test)[cold]
+    cosine_seconds = time.perf_counter() - started
     repaired = build('m1', noisy_test, 0.5)
     forward_plain = session._forward_ms(False)
     session.model.set_eval_text(repaired)
@@ -117,7 +131,8 @@ def evaluate_repairs(session, noise_rate, noise_type, noise_seed, k=10, ks=(10, 
         session.model.set_eval_text(None)
     out['cost'] = {'neighbor_seconds': knn_seconds, 'repair_seconds': build_seconds,
                    'extra_mb': (len(cold) * len(data.warm_item_index) * 4 + knn.nbytes + rand.nbytes) / 2 ** 20,
-                   'forward_ms': forward_plain, 'forward_ms_repaired': forward_repaired}
+                   'forward_ms': forward_plain, 'forward_ms_repaired': forward_repaired,
+                   'cosine_seconds': cosine_seconds, 'cosine_mb': cosine.nbytes / 2 ** 20}
     out['n_corrupted_cold'] = int(corrupted.sum())
     out['k'] = k
     out['ks'] = list(ks)
