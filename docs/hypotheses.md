@@ -157,6 +157,18 @@ H8 and H9 tested the repairs on one noise family, the hashtag mix at rate 0.4, w
 
 *Outcome (added 2026-10-29, after the runs).* H10a supported: in all nine matched settings M3 beats the unrepaired model in all three seeds and its mean gain exceeds VGR's. H10b supported on the means (M3 is above both controls in every matched setting), but the doubt condition 'a control within 0.001 of M3' is met once: gaussian 0.4, where M3 (+0.0039) is only +0.0004 above the permuted-cosine control (+0.0035). H10c not supported: M3's mean is at least M1's in only 5 of 9 settings; the blind blend M1 is better at rate 0.6 (hashtag +0.0135 against +0.0101, shuffle +0.0236 against +0.0224, gaussian +0.0077 against +0.0075) and for gaussian 0.4. H10d supported for all three types (M3 gain at rate 0.6 against 0.2: hashtag +0.0101/+0.0060, shuffle +0.0224/+0.0094, gaussian +0.0075/+0.0048). H10e supported: M3 changes clean-text Recall@20 by +0.0009 to +0.0019 in every setting. H10f supported: under a validation noise fixed at hashtag 0.4, M3 beats the unrepaired model in all three seeds in all four mismatch settings and keeps 99% to 116% of its matched gain (hashtag 0.2: 99%, hashtag 0.6: 104%, shuffle 0.4: 101%, gaussian 0.4: 116%). The AUROC of VGR's cosine is 0.993 or higher in every setting. M3 followed by VGR reaches 71% to 124% of the loss from corruption (at rate 0.2: 99% to 124%; at rate 0.6: 71% to 83%); above 100% means the repaired model on noisy text is above the unrepaired model on clean text.
 
+## H11 (added 2026-10-29, after the H10 results were read, before the seed 2028 and 2029 runs)
+
+H8 to H10 rest on three seeds, and the M3 minus M1 differences are as small as +0.0005 per seed. Two more clean baselines (seeds 2028 and 2029, PyTorch 2.9.1, `--save_final 1`, results in `results/ckpt291/`) give five seeds for the main setting (hashtag, rate 0.4, validation noise matched). Seeds 2028 and 2029 were not used in any earlier repair run. The seeds were chosen before training and are not replaced if the outcome is unfavourable. Selection of the repair parameters on noisy validation data is unchanged, no value is re-tuned.
+
+*H11a (M3 holds).* M3 beats the unrepaired model in both new seeds, and M3 plus VGR beats VGR alone in both.
+
+*H11b (controls).* M3 is above both its controls (random neighbours, permuted cosine) in both new seeds.
+
+*H11c (M3 against M1).* Over five seeds M3 is at least M1 in four. I expect this to be close: at rate 0.4 the three-seed differences were +0.0029, +0.0005 and +0.0011. The paired bootstrap interval (10000 resamples over seeds) of the mean M3 minus M1 difference is reported with no prediction about whether it excludes zero; with five seeds it may well include it, and then the advantage of M3 over M1 at rate 0.4 is not established.
+
+*What would make me doubt the repair.* M3 not beating the unrepaired model in a new seed, or a control within 0.001 of M3 in a new seed. A result against any of these is a valid outcome and will be reported as such. If the baseline of a new seed does not train normally (best epoch at the first evaluation, or Recall@20 below 0.06) the run is reported and the cause looked for, not dropped.
+
 ## Protocol commitments
 
 - `γ` is chosen on the validation set (noisy validation, grid {1, 2, 4, 8, 16}); the test set is never used to tune the method. A test-set γ sweep, if shown, is a sensitivity table reported after selection.
