@@ -177,3 +177,46 @@ def test_main_writes_the_ablation_section_only_when_runs_exist(with_ablation, tm
     out = tmp_path / 'tables.md'
     main(['--results_dir', str(with_ablation), '--out', str(out)])
     assert '## Noise-augmented training' in out.read_text()
+
+
+def probe_run(kind, seed, clean, noisy, warm_corrupted, warm_uncorrupted, cold):
+    r = run('stress_test', seed, {'clean': (clean, clean / 2), 'noisy': (noisy, noisy / 2)})
+    w = lambda t: {'w_v': 1 - t, 'w_t': t}
+    r['args'].update(suffix=f'gateprobe_{kind}', train_noise_rate=0.4 if kind == 'aug' else 0.0, gate_probe=1)
+    r['report']['gate_probe'] = {'n_warm_corrupted': 4, 'n_warm_uncorrupted': 6, 'warm_clean': w(warm_uncorrupted),
+                                 'warm_corrupted': w(warm_corrupted), 'warm_uncorrupted': w(warm_uncorrupted),
+                                 'cold_clean': w(cold)}
+    return r
+
+
+@pytest.fixture
+def with_probe(tmp_path):
+    runs = []
+    for seed, (c, n) in zip((1, 2, 3), ((0.10, 0.08), (0.12, 0.09), (0.11, 0.07))):
+        runs.append(probe_run('clean', seed, c, n, 0.50, 0.48, 0.55))
+        runs.append(probe_run('aug', seed, c - 0.005, n - 0.01, 0.30, 0.44, 0.98))
+    write(tmp_path, runs)
+    return tmp_path
+
+
+def test_gate_probe_compares_augmented_and_clean_trained_in_the_same_environment(with_probe):
+    from mamex_robustness.reporting.make_tables import build_gate_probe
+    gp = build_gate_probe(str(with_probe))
+    assert gp['seeds'] == [1, 2, 3]
+    assert gp['gate']['aug']['warm_corrupted'][0] == pytest.approx(0.30)
+    assert gp['gate']['clean']['cold_clean'][0] == pytest.approx(0.55)
+    assert gp['gap']['aug'] == pytest.approx([0.14] * 3) and gp['gap']['clean'] == pytest.approx([-0.02] * 3)
+    assert gp['paired']['clean text: noise-augmented - clean-trained']['recall@20']['mean'] == pytest.approx(-0.005)
+    assert gp['paired']['noisy text: noise-augmented - clean-trained']['recall@20']['positive'] == 0
+
+
+def test_gate_probe_is_none_without_both_kinds(tmp_path):
+    from mamex_robustness.reporting.make_tables import build_gate_probe
+    write(tmp_path, [probe_run('aug', 1, 0.1, 0.08, 0.3, 0.44, 0.98)])
+    assert build_gate_probe(str(tmp_path)) is None
+
+
+def test_main_writes_the_gate_probe_section(with_probe, tmp_path):
+    out = tmp_path / 'tables.md'
+    main(['--results_dir', str(with_probe), '--out', str(out)])
+    assert '## Gate probe' in out.read_text()

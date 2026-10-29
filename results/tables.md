@@ -90,3 +90,19 @@ Selected gamma per seed: [16.0, 2.0, 8.0]
 | clean | 0.014 ± 0.004 | 0.986 ± 0.004 |
 | noisy | 0.083 ± 0.048 | 0.917 ± 0.048 |
 | noisy_vgr | 0.099 ± 0.065 | 0.901 ± 0.065 |
+
+## Gate probe: mean text weight w_t on warm items (seeds [2025, 2026, 2027]; mean ± sample std)
+
+| Model | warm, corrupted | warm, not corrupted | warm, no noise | cold, no noise | gap (not corrupted - corrupted) per seed |
+|---|---|---|---|---|---|
+| Noise-augmented training | 0.313 ± 0.010 | 0.435 ± 0.001 | 0.436 ± 0.001 | 0.987 ± 0.004 | +0.120, +0.114, +0.132 |
+| Clean training (control) | 0.495 ± 0.018 | 0.487 ± 0.001 | 0.487 ± 0.001 | 0.549 ± 0.002 | -0.029, +0.008, -0.005 |
+
+Same-environment comparison (both models from the gate-probe runs; paired per seed):
+
+| Comparison | metric | per-seed differences | mean | seeds > 0 |
+|---|---|---|---|---|
+| clean text: noise-augmented - clean-trained | recall@20 | -0.0069, -0.0043, -0.0050 | -0.0054 | 0/3 |
+| clean text: noise-augmented - clean-trained | ndcg@20 | -0.0041, -0.0048, -0.0042 | -0.0044 | 0/3 |
+| noisy text: noise-augmented - clean-trained | recall@20 | -0.0123, -0.0097, -0.0096 | -0.0105 | 0/3 |
+| noisy text: noise-augmented - clean-trained | ndcg@20 | -0.0046, -0.0054, -0.0056 | -0.0052 | 0/3 |

@@ -132,6 +132,51 @@ def render_ablation(ab, noise_rate, noise_type):
     return out
 
 
+def build_gate_probe(results_dir, noise_rate=0.4, noise_type='hashtag'):
+    """Gate weights on warm items and same-environment metrics for the augmented model against its clean-trained control.
+
+    Both come from runs made together (suffix gateprobe_aug / gateprobe_clean); None unless both kinds exist for some seed.
+    """
+    by_kind = {'aug': {}, 'clean': {}}
+    for r in _load_all(results_dir):
+        suffix = r['args'].get('suffix', '')
+        if suffix in ('gateprobe_aug', 'gateprobe_clean') and r['args']['noise_type'] == noise_type \
+                and abs(r['args']['noise_rate'] - noise_rate) < 1e-9 and 'gate_probe' in r['report']:
+            by_kind[suffix.split('_')[1]][r['args']['seed']] = r['report']
+    seeds = sorted(set(by_kind['aug']) & set(by_kind['clean']))
+    if not seeds:
+        return None
+    names = ('warm_corrupted', 'warm_uncorrupted', 'warm_clean', 'cold_clean')
+    gate = {k: {n: _mean_std([by_kind[k][s]['gate_probe'][n]['w_t'] for s in seeds]) for n in names} for k in by_kind}
+    gap = {k: [by_kind[k][s]['gate_probe']['warm_uncorrupted']['w_t'] - by_kind[k][s]['gate_probe']['warm_corrupted']['w_t']
+               for s in seeds] for k in by_kind}
+    paired = {}
+    for label, block in (('clean text', 'clean'), ('noisy text', 'noisy')):
+        paired[f'{label}: noise-augmented - clean-trained'] = {}
+        for metric, (kind, k) in METRICS.items():
+            d = [by_kind['aug'][s][block][kind][k] - by_kind['clean'][s][block][kind][k] for s in seeds]
+            paired[f'{label}: noise-augmented - clean-trained'][metric] = {
+                'per_seed': d, 'mean': float(np.mean(d)), 'positive': sum(x > 0 for x in d), 'n': len(d)}
+    return {'seeds': seeds, 'gate': gate, 'gap': gap, 'paired': paired}
+
+
+def render_gate_probe(gp):
+    out = [f'## Gate probe: mean text weight w_t on warm items (seeds {gp["seeds"]}; mean ± sample std)', '',
+           '| Model | warm, corrupted | warm, not corrupted | warm, no noise | cold, no noise | gap (not corrupted - corrupted) per seed |',
+           '|---|---|---|---|---|---|']
+    for k, label in (('aug', 'Noise-augmented training'), ('clean', 'Clean training (control)')):
+        g = gp['gate'][k]
+        out.append(f"| {label} | " + ' | '.join(_pm(g[n]) for n in ('warm_corrupted', 'warm_uncorrupted', 'warm_clean', 'cold_clean'))
+                   + f" | {', '.join(f'{x:+.3f}' for x in gp['gap'][k])} |")
+    out += ['', 'Same-environment comparison (both models from the gate-probe runs; paired per seed):', '',
+            '| Comparison | metric | per-seed differences | mean | seeds > 0 |', '|---|---|---|---|---|']
+    for name, entry in gp['paired'].items():
+        for metric in ('recall@20', 'ndcg@20'):
+            d = entry[metric]
+            out.append(f"| {name} | {metric} | {', '.join(f'{x:+.4f}' for x in d['per_seed'])} | {d['mean']:+.4f} | {d['positive']}/{d['n']} |")
+    return out
+
+
 def build_sensitivity(results_dir, seed, noise_rate=0.4, noise_type='hashtag'):
     """Single-seed noise-rate and gamma sweeps. Only runs that exist are listed."""
     runs = [r for r in _load(results_dir) if r['args']['seed'] == seed and r['args']['noise_type'] == noise_type
@@ -221,6 +266,9 @@ def main(argv=None):
     ablation = build_ablation(a.results_dir, a.noise_rate, a.noise_type)
     if ablation:
         text += '\n' + '\n'.join(render_ablation(ablation, a.noise_rate, a.noise_type)) + '\n'
+    probe = build_gate_probe(a.results_dir, a.noise_rate, a.noise_type)
+    if probe:
+        text += '\n' + '\n'.join(render_gate_probe(probe)) + '\n'
     with open(a.out, 'w') as f:
         f.write(text)
     return tables

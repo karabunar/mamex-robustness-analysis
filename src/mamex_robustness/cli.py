@@ -27,6 +27,8 @@ def parse_args(argv=None):
     parser.add_argument('--train_noise_rate', type=float, default=0.0,
                         help='ablation: corrupt this share of warm items\' text (--noise_type) in every training epoch; '
                              'validation and model selection stay clean; 0 = train on clean text')
+    parser.add_argument('--gate_probe', type=int, default=0,
+                        help='1 = also report the mean gate weights on warm items split by a training-style corruption (rate --noise_rate)')
     parser.add_argument('--vgr_gamma', type=float, default=8.0)
     parser.add_argument('--gamma_grid', type=float, nargs='+', default=None,
                         help='select vgr_gamma on noisy validation data from these values')
@@ -116,6 +118,8 @@ def main(argv=None):
             my_env.test_logger.info(f'hr@{top_k} = {my_session.test_hr[top_k]:.5f}, recall@{top_k} = {my_session.test_recall[top_k]:.5f}, ndcg@{top_k} = {my_session.test_ndcg[top_k]:.5f}')
 
     report = my_session.final_report(args.noise_rate, args.noise_type, args.noise_seed, args.gamma_grid)
+    if args.gate_probe:
+        report['gate_probe'] = my_session.gate_probe(args.noise_rate, args.noise_type, args.noise_seed)
     if 'gamma_selection' in report:
         args.vgr_gamma = report['gamma_selection']['selected']
     gamma_tag = 'sel' if args.gamma_grid else str(args.vgr_gamma)

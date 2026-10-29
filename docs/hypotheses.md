@@ -56,6 +56,22 @@ This ablation was listed as "not run" in the report. H1 to H4 and their results 
 
 *What would make me doubt it.* H5a: no gain, or a gain that does not have the same sign in all three seeds; then the clean-trained-baseline loss is not something training on noise removes, and the gate-shortcut story needs another explanation. H5b: a clean loss at or above 0.0108 means augmentation trades one failure for another. H5c: a VGR gain equal to or larger than +0.0033 means VGR and augmentation address different things. A negative result for any of them is a valid outcome and will be reported as such.
 
+## H6 (added 2026-10-28, after the noise-augmented results of H5 were read, before the gate-probe runs)
+
+H5 showed that models trained on corrupted warm-item text put almost all gate weight on text (w_t 0.986 on clean cold items, 0.917 on noisy ones, against 0.55 and 0.56 with clean training). The only gate numbers seen so far are on cold items. This probe asks what the gate does on the *warm* items it was trained on. Candidate explanation to test (untested when written): the fusion balance loss pulls the batch-mean gate weight to 0.5, so a gate that gives corrupted warm items little text weight can keep the mean at 0.5 only by giving the other items a lot.
+
+*Setting.* Same data and seeds 2025 to 2027, `--mode stress_test --noise_rate 0.4 --gate_probe 1`, once with `--train_noise_rate 0.4` (suffix `gateprobe_aug`) and once with `--train_noise_rate 0` (suffix `gateprobe_clean`, the clean-trained control). After training, the best-validation model is probed with a fresh training-style corruption of 40% of the warm items (a mask no training epoch used) and the mean text weight `w_t` is measured on the corrupted warm items, on the other warm items, and on all warm items without noise. No VGR, no test-set tuning; the probe uses warm items only, so it touches no evaluation data.
+
+*H6a (the gate discriminates on warm items).* In the augmented model, `w_t` on corrupted warm items is lower than on uncorrupted warm items by more than 0.2 in all three seeds.
+
+*H6b (balance compensation).* In the augmented model, `w_t` on uncorrupted warm items is above 0.8, and the mean over all warm items without noise is above 0.8 too.
+
+*H6c (control).* In the clean-trained control the gap between corrupted and uncorrupted warm items is below 0.05 and `w_t` is near 0.55 on both.
+
+*What would make me doubt the balance explanation.* A gap below 0.1 in the augmented model (the gate does not tell corrupted warm items apart, so it is not compensating for them), or `w_t` above 0.9 on corrupted and uncorrupted warm items alike (the gate ignores the noise and the text weight is high for another reason). A control gap above 0.05 would mean the probe itself separates items for a reason other than training noise. Also as checks: the control's clean metrics must equal the core baseline runs of the same seed, and the augmented runs' clean and noisy metrics must equal the earlier `noise_aug` runs, since training is deterministic for a given seed; a difference would mean the run is not repeatable.
+
+A result against any of these is a valid outcome and will be reported as such.
+
 ## Protocol commitments
 
 - `γ` is chosen on the validation set (noisy validation, grid {1, 2, 4, 8, 16}); the test set is never used to tune the method. A test-set γ sweep, if shown, is a sensitivity table reported after selection.

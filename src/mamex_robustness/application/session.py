@@ -17,6 +17,8 @@ class Session(object):
     VAL_NOISE_SEED_OFFSET = 10_000
     # Training noise (--train_noise_rate) is redrawn every epoch from this offset plus the epoch.
     TRAIN_NOISE_SEED_OFFSET = 20_000
+    # The gate probe draws a corruption no training epoch used (epochs stay below 10,000).
+    PROBE_NOISE_SEED_OFFSET = 30_000
 
     def __init__(self, env, model, loader):
         self.env = env
@@ -263,6 +265,21 @@ class Session(object):
         selected = max(scores, key=lambda g: (scores[g], -g))  # ties go to the smaller gamma
         return {'grid': sorted(scores), 'val_ndcg': {str(g): v for g, v in scores.items()},
                 'selected': selected, 'metric': f'ndcg@{key}'}
+
+    def gate_probe(self, noise_rate, noise_type, noise_seed):
+        """Mean gate weights on warm items, split by a training-style corruption (model must hold the best state).
+
+        The gate scores one item at a time, so corrupted and uncorrupted items are measured in the same pass.
+        """
+        noisy = self.dataset.train_noisy_text_feat(noise_rate, noise_type, self.PROBE_NOISE_SEED_OFFSET + noise_seed)
+        warm = np.asarray(self.dataset.warm_item_index)
+        changed = (noisy[warm] != self.dataset.text_feat[warm]).any(axis=1)
+        self.model.eval()
+        return {'n_warm_corrupted': int(changed.sum()), 'n_warm_uncorrupted': int((~changed).sum()),
+                'warm_clean': self._gate_mean(None, False, warm),
+                'warm_corrupted': self._gate_mean(noisy, False, warm[changed]),
+                'warm_uncorrupted': self._gate_mean(noisy, False, warm[~changed]),
+                'cold_clean': self._gate_mean(None, False, np.asarray(self.dataset.cold_item_index))}
 
     def final_report(self, noise_rate, noise_type, noise_seed, gamma_grid=None):
         """Evaluate the best-validation model on the test set under clean/noisy text, with and without VGR.

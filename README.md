@@ -57,8 +57,24 @@ Added 2026-10-28, after H1 to H4 and their results were known; hypothesis writte
 
 This is one design (rate 0.4, same noise family as the test noise, new prototypes each epoch), so it shows that this augmentation did not help, not that augmentation cannot. Per-seed numbers and paired differences: `results/tables.md`; discussion: report section VII-D. Reproduce: `NOISE_AUG=1 SKIP_CORE=1 DATA_PATH=processed_data_baby/cold ./scripts/run_experiments.sh`.
 
+### Where the gate collapses (H6) and a reproducibility caveat
+Added 2026-10-28, hypothesis written before the runs (`docs/hypotheses.md`). Six extra runs (three seeds, with and without augmentation) measure the mean text weight w_t of the gate on warm items, which the models were trained on (`--gate_probe 1`):
+
+| Model | warm, corrupted | warm, not corrupted | warm, no noise | cold, no noise |
+|---|---|---|---|---|
+| Noise-augmented training | 0.313 | 0.435 | 0.436 | **0.987** |
+| Clean training (control) | 0.495 | 0.487 | 0.487 | 0.549 |
+
+- H6a (corrupted warm items get 0.2 less text weight): not supported, gap 0.11 to 0.13.
+- H6b (uncorrupted warm items above 0.8, balance-loss compensation): not supported, 0.435.
+- H6c (no gap in the control): supported.
+
+The collapse belongs to the cold items: the augmented model gives warm items about 0.44 and unseen cold items 0.99. We still do not know why. Against the same-environment control, the augmented model is lower in all three seeds (-0.0105 Recall@20 on noisy text, -0.0054 on clean text).
+
+**Caveat.** On 2026-10-28 the installed PyTorch was 2.14.1+cu130, not the pinned 2.9.1, and a rerun of a clean core baseline (seed 2026) gave Recall@20 0.0753 instead of the saved 0.0736. The code is not the cause (the pre-ablation code gives 0.0753 too); the PyTorch version was not tested as the cause. The saved core results are the earlier runs; see `docs/reproducibility.md`.
+
 ## Tests
-`python -m pytest -q` runs 110 tests in about 3 seconds on CPU, with a tiny synthetic dataset (no real data needed). They cover the noise simulator and its mask rules (18), the VGR gating and controls (8 + 4), the session evaluation and report (14 + 4), the CLI (9 + 5 end to end), the legacy behaviour of the upstream code before the restructure (5), result tables, plots, failure analysis and bootstrap metrics (13 + 8 + 8 + 6). The newest ones (10) check the ablation: training noise touches only warm items, at the requested share, is redrawn each epoch, never reaches validation or the stored model state, and does not overlap the test mask; the ablation table pairs every seed with its clean-trained runs and is left out when no augmented run exists. Status on 2026-10-28: 110 passed. The tests check the code, not the scientific results.
+`python -m pytest -q` runs 118 tests in about 3 seconds on CPU, with a tiny synthetic dataset (no real data needed). They cover the noise simulator and its mask rules (18), the VGR gating and controls (8 + 4), the session evaluation and report (14 + 4), the CLI (9 + 5 end to end), the legacy behaviour of the upstream code before the restructure (5), result tables, plots, failure analysis and bootstrap metrics (13 + 8 + 8 + 6). The newest ones (18) check the ablation and its probe: training noise touches only warm items, at the requested share, is redrawn each epoch, never reaches validation or the stored model state, and does not overlap the test mask; the ablation table pairs every seed with its clean-trained runs and is left out when no augmented run exists. Status on 2026-10-28: 118 passed. The tests check the code, not the scientific results.
 
 ## Literature
 `docs/literature.md`, `docs/references.bib`.

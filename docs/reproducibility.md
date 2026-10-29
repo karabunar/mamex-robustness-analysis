@@ -40,12 +40,13 @@ Shapes: 7,050 items; 1,410 cold items; 19,442 training users; `image_feat` 7050Ã
 ## Seeds and determinism
 - Training seeds: 2025, 2026, 2027 (`--seed`). `--noise_seed` defaults to the training seed, so a given seed gives the same corruption mask in every mode.
 - Validation noise (for Î³ selection) uses `noise_seed + 10000`, a different mask from the test mask.
-- Same seed and same code give the same clean result (checked: baseline and stress_test with seed 2025 gave identical clean metrics). GPU nondeterminism was not otherwise audited.
+- Same seed and same code give the same clean result within one environment (checked on 2026-10-28: baseline and stress_test with train_noise_rate 0 give identical results; six identical jobs run at once give identical results; the pre-ablation code and the current code give identical results over 40 epochs and, for seed 2026, over a full run).
+- Across environments they do not. A repeat of the core grid between 2026-10-17 and 2026-10-23 reproduced every saved number exactly. On 2026-10-28 the installed PyTorch was 2.14.1+cu130 (CUDA 13.0, cuDNN 9.24), not the pinned 2.9.1, and a clean baseline of seed 2026 gave Recall@20 0.0753 (best epoch 480) against the saved 0.0736 (410); seed 2025 gave 0.0809 against 0.0819 and seed 2027 0.07740 against 0.07741. The code is not the cause (the pre-ablation code gives 0.0753 too). Whether the PyTorch version is the cause was not tested; the pinned 2.9.1 was not reinstalled. The core, sweep and diagnostic results in `results/` are the saved earlier runs; the ablation and gate-probe runs (suffixes `noise_aug`, `gateprobe_aug`, `gateprobe_clean`) were made in the 2.14.1 environment, so the ablation is compared with the clean-trained control of the gate-probe runs as well as with the saved core runs. The differences between the two comparisons are small (noisy Recall@20: -0.0105 against -0.0100).
 
 ## Commands
 ```
 export PYTHONPATH=src
-python -m pytest -q                       # 110 tests, no GPU needed
+python -m pytest -q                       # 118 tests, no GPU needed
 # short real-data check (3 epochs, not a reported result); delete the *_smoketest files it writes in results/
 python main.py --data_path processed_data_baby/cold --mode baseline --seed 1 --epoch 3 --eva_interval 1 --suffix smoketest
 DATA_PATH=processed_data_baby/cold SEEDS="2025 2026 2027" ./scripts/run_experiments.sh   # baseline, stress_test, improved per seed
@@ -60,7 +61,7 @@ STREAM=A DATA_PATH=processed_data_baby/cold ./scripts/run_discrepancy.sh   # bas
 STREAM=B DATA_PATH=processed_data_baby/cold ./scripts/run_discrepancy.sh   # align_coeff 1.28 (3 seeds), 12.8 (seed 2025)
 STREAM=C DATA_PATH=processed_data_baby/cold ./scripts/run_discrepancy.sh   # align_coeff 12.8 (seeds 2026, 2027), 128 (3 seeds)
 ```
-Result files carry the suffix `seedext` or `align<coeff>`; `make_tables.py` ignores suffixed files, so the main tables are unchanged. These 16 runs add 11.9 hours to the sum of `train_seconds` (about 2,000 to 3,600 s each, slower than a solo run because three ran at once), which brings the total over all 39 result files to 22.7 hours. The three noise-augmented runs (suffix `noise_aug`, three in parallel, 2,333 to 2,554 s each, ablation H5) bring it to 24.7 hours over 42 files; `make_tables.py` reports them in a separate section. A solo run takes about 20 minutes.
+Result files carry the suffix `seedext` or `align<coeff>`; `make_tables.py` ignores suffixed files, so the main tables are unchanged. These 16 runs add 11.9 hours to the sum of `train_seconds` (about 2,000 to 3,600 s each, slower than a solo run because three ran at once), which brings the total over all 39 result files to 22.7 hours. The three noise-augmented runs (suffix `noise_aug`, three in parallel, 2,333 to 2,554 s each, ablation H5) bring it to 24.7 hours over 42 files, and the six gate-probe runs (below, six in parallel, 4,400 to 5,100 s each) to 32.7 hours over 48 files; `make_tables.py` reports them in a separate section. A solo run takes about 20 minutes.
 
 Outputs: `results/*.json` (one per run, containing args, metrics, gate statistics, latency, GPU memory, training seconds) and the two figures under `results/`. Reported tables must be generated from these files only.
 
@@ -71,7 +72,16 @@ python -m mamex_robustness.reporting.failure_analysis --results_dir results  # r
 python -m mamex_robustness.reporting.ranking_metrics --results_dir results   # results/ranking_metrics.md (Success@K, MRR, bootstrap CIs; seed 0, 1000 resamples)
 PARALLEL=1 SKIP_CORE=1 SWEEPS=1 SEEDS=2025 DATA_PATH=processed_data_baby/cold ./scripts/run_experiments.sh   # single-seed sweeps
 ```
-A repeated run of the core grid reproduced every saved number exactly (timing and memory excluded).
+A repeated run of the core grid reproduced every saved number exactly (timing and memory excluded) when it was made, in the environment pinned in `requirements.txt`. It no longer does in the 2.14.1 environment, see the section on seeds and determinism.
+
+## Gate probe (H6)
+Mean gate weights on warm items, split by a training-style corruption, for the noise-augmented model and a clean-trained control (three seeds each, suffixes `gateprobe_aug` and `gateprobe_clean`); the table is the "Gate probe" section of `results/tables.md`:
+```
+for seed in 2025 2026 2027; do
+  python main.py --data_path processed_data_baby/cold --mode stress_test --seed $seed --noise_rate 0.4 --train_noise_rate 0.4 --gate_probe 1 --suffix gateprobe_aug
+  python main.py --data_path processed_data_baby/cold --mode stress_test --seed $seed --noise_rate 0.4 --train_noise_rate 0   --gate_probe 1 --suffix gateprobe_clean
+done
+```
 
 ## Not done
 - Other noise-augmentation designs (rate, prototype scheme, noise on the image side) and other noise types in training.
