@@ -201,6 +201,32 @@ Known (H6, H7): in the augmented model the gate puts weight 0.99 on text for col
 
 *Outcome of H13 (added 2026-10-30, after the runs).* Seeds 2025 and 2026, augmented and clean-trained checkpoints (PyTorch 2.9.1). H13a not supported: the text-minus-image logit at zero input is +0.181 and +0.219 in the augmented model (control +0.060, +0.054), far from +3. H13b not supported: scaling each cold item's expert outputs to the warm mean norm leaves w_t at 0.993 and 0.991 (0.991 and 0.981 before; the threshold was below 0.8). H13c supported: the control's w_t moves from 0.551 to 0.551 and 0.549. H13d (no prediction): replacing both expert outputs of a cold item by those of a random warm item gives w_t 0.436 and 0.434 (warm level 0.437 and 0.435), so the gate responds to the content of the cold items' expert outputs. Exploratory, added after seeing this: replacing only the image output gives 0.315 and 0.359, only the text output 0.953 and 0.908, so the cold items' image-side expert outputs drive the text preference. The mechanism proposed (bias plus small norm) is rejected; the cause of the image-side outputs looking unfamiliar to the gate is not found. Two seeds, one augmentation design.
 
+## H14 to H17 (added 2026-10-30, after the H12 and H13 results were read, before any of the runs below)
+
+Four follow-ups on open points. Seeds 2030 to 2034 were used before only for clean baselines without checkpoints (D1, PyTorch 2.14.1); no repair or probe has been run on them.
+
+### H14: two more candidate explanations of the Rec@10 gap (training-free, on the saved checkpoints and curves)
+*H14a (candidate set).* The evaluation ranks a user's test items among all 1,410 cold items (validation and test items). Ranking among the test items only would raise Recall@10 and Recall@20 together; I predict both rise by more than 20% in relative terms, which would exclude this protocol, since the published Rec@20 (0.0771) already matches the measured one under the 1,410-item candidate set.
+*H14b (best epoch per metric).* If each published number is the best over the evaluation epochs of one run, the per-metric maxima of one seed (or the three-seed mean of maxima) would match the published vector (0.0512, 0.0771, 0.0292, 0.0363). I predict that no seed and not the mean of the maxima is within 0.001 (Recall) and 0.0005 (NDCG) of all four numbers, because the maxima of Recall@20 of the better seeds lie far above 0.0771. Neither is adopted as a baseline; both are diagnostics.
+
+### H15: where does the gain of the cosine-gated repair M3 come from?
+On the five checkpoints of seeds 2025 to 2029 (hashtag 0.4, noisy text, the parameters of M3 as selected on validation data), M3 is applied only to the truly corrupted cold items, then only to the uncorrupted ones.
+*H15a.* The corrupted-only gain is at least 70% of the full M3 gain.
+*H15b.* The clean-only gain is positive but below +0.003 Recall@20 in every seed.
+*Reading rule.* If the clean-only gain is at least 30% of the full gain, a large part of M3's benefit is neighbour text on items that were not corrupted, which would explain why the repair can exceed the clean unrepaired model.
+
+### H16: ten seeds for M3 against M1 (hashtag 0.4)
+Clean baselines of seeds 2030 to 2034 retrained in PyTorch 2.9.1 with checkpoints, then evaluated exactly like seeds 2025 to 2029.
+*H16a.* M3 beats the unrepaired model in all five new seeds.
+*H16b.* M3 is at least M1 in at least three of the five new seeds.
+*H16c.* The mean difference M3 minus M1 over the ten seeds is between +0.0005 and +0.0025. I make no prediction on whether its bootstrap interval excludes zero. A ten-seed mean below +0.0005 means the advantage of M3 over M1 at rate 0.4 is not supported.
+
+### H17: is the collapse caused by an item having no training interactions?
+Noise-augmented training (rate 0.4) and a clean-trained control, seeds 2025 and 2026, with 10% of the warm items drawn at random and removed from the training interactions (they stay in the item set; validation and test are unchanged). The gate's mean text weight on clean text is read on three groups: trained warm items, held-out warm items, cold items.
+*H17a.* In the augmented model the held-out warm items behave like cold items: mean text weight at least 0.8, against about 0.43 on trained warm items.
+*H17b.* In the clean-trained control all three groups stay between 0.4 and 0.65.
+*Reading.* H17a holding means the collapse follows from not being in the training loss, not from being a cold item; failing, that something else separates cold from held-out warm items (for example that cold items were also never in the item graph used for negative sampling). Two seeds, one augmentation design.
+
 ## Protocol commitments
 
 - `γ` is chosen on the validation set (noisy validation, grid {1, 2, 4, 8, 16}); the test set is never used to tune the method. A test-set γ sweep, if shown, is a sensitivity table reported after selection.
