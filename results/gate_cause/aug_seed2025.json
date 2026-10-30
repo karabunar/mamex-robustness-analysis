@@ -1,0 +1,23 @@
+{
+  "checkpoint": "results/ckpt_aug/checkpoints/stress_test_hashtag_r0.40_g8.0_seed2025.pt",
+  "seed": 2025,
+  "report": {
+    "zero_gap": 0.18090686202049255,
+    "warm_norm": {
+      "v": 2.010262966156006,
+      "t": 1.5307587385177612
+    },
+    "cold_norm": {
+      "v": 1.1972906589508057,
+      "t": 1.280957579612732
+    },
+    "w_t_warm": 0.4372846782207489,
+    "w_t_cold": 0.9910531640052795,
+    "w_t_cold_scaled_both": 0.9929583072662354,
+    "w_t_cold_scaled_image": 0.9926987886428833,
+    "w_t_cold_scaled_text": 0.9909102916717529,
+    "w_t_cold_replaced_by_warm": 0.435621052980423,
+    "w_t_cold_image_replaced_by_warm": 0.31457218527793884,
+    "w_t_cold_text_replaced_by_warm": 0.9528695940971375
+  }
+}

@@ -10,3 +10,5 @@ baby/
 processed_data_baby/
 *.pt
 docs/presentation_outline.md
+demo_out/
+demo_out.log

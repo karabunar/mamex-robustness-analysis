@@ -319,6 +319,45 @@ class Session(object):
                 'distance_ratio': cold_stats['distance'] / warm_stats['distance'],
                 'spearman_distance_wt_cold': None if np.isnan(rho) else float(rho)}
 
+    @torch.no_grad()
+    def gate_cause(self, seed=0):
+        """Interventions on the gate input of the cold items (clean text, eval mode; model must hold the best state).
+
+        The gate reads the concatenated image and text expert outputs. Each intervention changes only that input and
+        reports the mean text weight w_t of the cold items: the unchanged value, each expert output rescaled per item to
+        the mean warm norm (both, image only, text only), both outputs replaced by those of a random warm item, and only the image or only the text output replaced (the last two were added after the first results were read).
+        zero_gap is the text-minus-image gate logit with both expert outputs set to zero (the gate's own bias).
+        """
+        self.model.eval()
+        image_emb, _ = self.model.image_linear(self.model.image_feat)
+        text_emb, _ = self.model.text_linear(self.model.text_feat)
+        warm = torch.as_tensor(np.asarray(self.dataset.warm_item_index), device=self.env.device)
+        cold = torch.as_tensor(np.asarray(self.dataset.cold_item_index), device=self.env.device)
+
+        def w_t(img, txt):
+            return float(torch.softmax(self.model.gate(torch.cat([img, txt], dim=1)), dim=1)[:, 1].mean())
+
+        def to_norm(x, target):
+            return x * (target / x.norm(dim=1, keepdim=True).clamp_min(1e-12))
+
+        warm_v, warm_t = float(image_emb[warm].norm(dim=1).mean()), float(text_emb[warm].norm(dim=1).mean())
+        v_c, t_c = image_emb[cold], text_emb[cold]
+        generator = torch.Generator().manual_seed(seed)
+        pick = warm[torch.randint(len(warm), (len(cold),), generator=generator).to(self.env.device)]
+        zero = torch.zeros(1, image_emb.shape[1], device=self.env.device)
+        logit = self.model.gate(torch.cat([zero, zero], dim=1))[0]
+        return {'zero_gap': float(logit[1] - logit[0]),
+                'warm_norm': {'v': warm_v, 't': warm_t},
+                'cold_norm': {'v': float(v_c.norm(dim=1).mean()), 't': float(t_c.norm(dim=1).mean())},
+                'w_t_warm': w_t(image_emb[warm], text_emb[warm]),
+                'w_t_cold': w_t(v_c, t_c),
+                'w_t_cold_scaled_both': w_t(to_norm(v_c, warm_v), to_norm(t_c, warm_t)),
+                'w_t_cold_scaled_image': w_t(to_norm(v_c, warm_v), t_c),
+                'w_t_cold_scaled_text': w_t(v_c, to_norm(t_c, warm_t)),
+                'w_t_cold_replaced_by_warm': w_t(image_emb[pick], text_emb[pick]),
+                'w_t_cold_image_replaced_by_warm': w_t(image_emb[pick], t_c),
+                'w_t_cold_text_replaced_by_warm': w_t(v_c, text_emb[pick])}
+
     def final_report(self, noise_rate, noise_type, noise_seed, gamma_grid=None):
         """Evaluate the best-validation model on the test set under clean/noisy text, with and without VGR.
 

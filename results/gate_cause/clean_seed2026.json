@@ -1,0 +1,23 @@
+{
+  "checkpoint": "results/ckpt291/checkpoints/baseline_hashtag_r0.00_g8.0_seed2026.pt",
+  "seed": 2026,
+  "report": {
+    "zero_gap": 0.05362536013126373,
+    "warm_norm": {
+      "v": 2.805091619491577,
+      "t": 2.7258410453796387
+    },
+    "cold_norm": {
+      "v": 2.0906522274017334,
+      "t": 2.354458808898926
+    },
+    "w_t_warm": 0.4865393042564392,
+    "w_t_cold": 0.5505091547966003,
+    "w_t_cold_scaled_both": 0.5491831302642822,
+    "w_t_cold_scaled_image": 0.5392968654632568,
+    "w_t_cold_scaled_text": 0.561551570892334,
+    "w_t_cold_replaced_by_warm": 0.4880271852016449,
+    "w_t_cold_image_replaced_by_warm": 0.49250277876853943,
+    "w_t_cold_text_replaced_by_warm": 0.5737255811691284
+  }
+}
