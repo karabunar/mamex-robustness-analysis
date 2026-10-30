@@ -33,6 +33,10 @@ def parse_args(argv=None):
                         help='1 = write the best-validation weights to <results_dir>/checkpoints/<result name>.pt after training')
     parser.add_argument('--curve', type=int, default=0,
                         help='1 = record validation and test metrics at every evaluation epoch (<results_dir>/curves/<result name>.json); does not change training or selection')
+    parser.add_argument('--holdout_warm', type=float, default=0.0,
+                        help='ablation: remove the training interactions of this share of the warm items (they stay in the item set); with --holdout_probe 1 the gate is read on them')
+    parser.add_argument('--holdout_seed', type=int, default=0)
+    parser.add_argument('--holdout_probe', type=int, default=0)
     parser.add_argument('--repr_probe', type=int, default=0,
                         help='1 = also report where cold items sit relative to warm items in the space the gate reads')
     parser.add_argument('--vgr_gamma', type=float, default=8.0)
@@ -128,6 +132,8 @@ def main(argv=None):
         report['gate_probe'] = my_session.gate_probe(args.noise_rate, args.noise_type, args.noise_seed)
     if args.repr_probe:
         report['repr_probe'] = my_session.representation_probe()
+    if args.holdout_probe:
+        report['holdout_probe'] = my_session.holdout_probe()
     if 'gamma_selection' in report:
         args.vgr_gamma = report['gamma_selection']['selected']
     gamma_tag = 'sel' if args.gamma_grid else str(args.vgr_gamma)

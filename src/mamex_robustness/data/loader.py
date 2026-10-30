@@ -108,6 +108,18 @@ class Loader4MM(torch.utils.data.Dataset):
         self.cold_item_index = np.load(os.path.join(self.env.DATA_PATH, 'cold_item_index.npy'))
         self.warm_item_index = np.setdiff1d(all_item_index, self.cold_item_index, assume_unique=False)
 
+        # optional ablation: warm items whose training interactions are removed (they stay in the item set, so they appear as
+        # negatives like the cold items do); allPos and the validation and test data are unchanged
+        self.heldout_warm_index = np.array([], dtype=int)
+        holdout = float(getattr(self.env.args, 'holdout_warm', 0.0))
+        if holdout > 0:
+            rng = np.random.default_rng(int(getattr(self.env.args, 'holdout_seed', 0)))
+            count = int(round(holdout * len(self.warm_item_index)))
+            self.heldout_warm_index = np.sort(rng.choice(self.warm_item_index, size=count, replace=False))
+            dropped = set(self.heldout_warm_index.tolist())
+            for user in list(self.train_data.keys()):
+                self.train_data[user] = [i for i in self.train_data[user] if i not in dropped]
+
         self.image_feat, self.text_feat, self.audio_feat = self.load_mutimedia_feature()
         self.feature = np.concatenate([self.image_feat, self.text_feat], axis=1)
         if self.env.args.dataset == 'tiktok':

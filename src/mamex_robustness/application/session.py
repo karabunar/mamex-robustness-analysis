@@ -319,6 +319,16 @@ class Session(object):
                 'distance_ratio': cold_stats['distance'] / warm_stats['distance'],
                 'spearman_distance_wt_cold': None if np.isnan(rho) else float(rho)}
 
+    def holdout_probe(self):
+        """Mean gate weights on trained warm items, held-out warm items (no training interactions) and cold items, on clean text."""
+        warm = np.asarray(self.dataset.warm_item_index)
+        held = np.asarray(self.dataset.heldout_warm_index)
+        trained = np.setdiff1d(warm, held)
+        return {'n_trained_warm': int(len(trained)), 'n_heldout_warm': int(len(held)),
+                'trained_warm': self._gate_mean(None, False, trained),
+                'heldout_warm': self._gate_mean(None, False, held),
+                'cold': self._gate_mean(None, False, np.asarray(self.dataset.cold_item_index))}
+
     @torch.no_grad()
     def gate_cause(self, seed=0):
         """Interventions on the gate input of the cold items (clean text, eval mode; model must hold the best state).

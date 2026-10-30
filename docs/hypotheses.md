@@ -227,6 +227,18 @@ Noise-augmented training (rate 0.4) and a clean-trained control, seeds 2025 and 
 *H17b.* In the clean-trained control all three groups stay between 0.4 and 0.65.
 *Reading.* H17a holding means the collapse follows from not being in the training loss, not from being a cold item; failing, that something else separates cold from held-out warm items (for example that cold items were also never in the item graph used for negative sampling). Two seeds, one augmentation design.
 
+## H18 (added 2026-10-30, after the H14 to H16 setup and before any run on a second dataset)
+
+The report's main limit is one dataset. The LATTICE authors also publish Amazon Sports and Clothing (same folder as the Baby data used here). The Baby interactions of MAMEX's processed data are exactly the union of LATTICE's 5-core train, validation and test files (160,792 pairs, identical sets), and MAMEX's cold split divides the items into warm, validation-cold and test-cold items (705 each for the last two). A second dataset is therefore built the same way from LATTICE's files: 20% of the items drawn at random with a fixed seed are cold, half of them validation and half test; the interactions of warm items form the training file and those of the cold items the validation and test files. This is our construction, not the authors' split (which cannot be reproduced without their seed), so the second dataset is a robustness check of the findings, not a reproduction.
+
+On three clean-trained seeds (2025 to 2027, one checkpoint each, PyTorch 2.9.1), evaluated with corruption of 40% of the cold items' text (hashtag), the same protocol and selection rules as on Baby (parameters on noisy validation data only; no setting tuned on the test set):
+*H18a.* The corruption lowers Recall@20 in all three seeds.
+*H18b.* VGR raises Recall@20 above the unrepaired model in all three seeds.
+*H18c.* The cosine-gated repair M3 beats the unrepaired model and both of its controls (random neighbours, permuted cosine) in all three seeds.
+*H18d.* M3 beats VGR in all three seeds, as on Baby (+0.0062 mean difference there).
+*H18e.* M3 is at least as good as the blind blend M1 in at least two of three seeds. I expect this to be close, as on Baby.
+*What would make me doubt the findings.* M3 not beating the unrepaired model in a seed, a control within 0.001 of M3, or VGR failing to beat the unrepaired model in two or more seeds. Any of these is reported as a failure on the second dataset, next to the Baby results. The reproduction of MAMEX's published numbers is not attempted on the second dataset.
+
 ## Protocol commitments
 
 - `γ` is chosen on the validation set (noisy validation, grid {1, 2, 4, 8, 16}); the test set is never used to tune the method. A test-set γ sweep, if shown, is a sensitivity table reported after selection.
