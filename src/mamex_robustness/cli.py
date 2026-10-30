@@ -31,6 +31,8 @@ def parse_args(argv=None):
                         help='1 = also report the mean gate weights on warm items split by a training-style corruption (rate --noise_rate)')
     parser.add_argument('--save_final', type=int, default=0,
                         help='1 = write the best-validation weights to <results_dir>/checkpoints/<result name>.pt after training')
+    parser.add_argument('--curve', type=int, default=0,
+                        help='1 = record validation and test metrics at every evaluation epoch (<results_dir>/curves/<result name>.json); does not change training or selection')
     parser.add_argument('--repr_probe', type=int, default=0,
                         help='1 = also report where cold items sit relative to warm items in the space the gate reads')
     parser.add_argument('--vgr_gamma', type=float, default=8.0)
@@ -137,6 +139,10 @@ def main(argv=None):
     with open(result_path, 'w') as f:
         json.dump({'args': vars(args), 'report': report, 'best_epoch': my_session.best_epoch,
                    'train_seconds': train_seconds}, f, indent=2)
+    if args.curve:
+        os.makedirs(os.path.join(args.results_dir, 'curves'), exist_ok=True)
+        with open(os.path.join(args.results_dir, 'curves', result_name + '.json'), 'w') as f:
+            json.dump({'best_epoch': my_session.best_epoch, 'curve': my_session.curve}, f)
     if args.save_final:
         ckpt_path = os.path.join(args.results_dir, 'checkpoints', result_name + '.pt')
         my_session.save_best(ckpt_path)

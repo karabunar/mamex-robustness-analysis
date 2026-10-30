@@ -171,6 +171,32 @@ H8 to H10 rest on three seeds, and the M3 minus M1 differences are as small as +
 
 *Outcome (added 2026-10-29, after the runs).* Disclosure first: the clean baselines of seeds 2028 and 2029 were already known from the D1 seed-extension runs (made in the PyTorch 2.14.1 environment); retrained in 2.9.1 they are identical (best epochs 320 and 730; Recall@20 0.07673 and 0.07393), so the baselines are not new information, but no repair had been run on them. Both trained normally. H11a supported: M3 beats the unrepaired model in both new seeds (Recall@20 +0.0078 and +0.0090), and M3 followed by VGR beats VGR alone (0.0712 against 0.0651 and 0.0770 against 0.0689). H11b supported: M3 is above the random-neighbour control by +0.0076 and +0.0092 and above the permuted-cosine control by +0.0056 and +0.0038, far from the 0.001 doubt limit. H11c supported by the count: over five seeds M3 is at least M1 in four (the exception is seed 2028, -0.0001); the per-seed differences are +0.0029, +0.0005, +0.0011, -0.0001, +0.0027, mean +0.0014, and the bootstrap interval over the five seeds (10000 resamples, seed 0) is [+0.0004, +0.0025], which excludes zero. Five seeds is a thin basis for a bootstrap and the lower end is close to zero, so we read it as a small advantage of M3 over M1 at rate 0.4, not as an established one. Five-seed means (Recall@20, hashtag 0.4): unrepaired 0.0661, VGR +0.0028, M1 +0.0075, M3 +0.0090, M3 then VGR +0.0099 (clean unrepaired 0.0767, loss 0.0106, so M3 recovers about 85% and M3 then VGR about 93%); M3 changes clean text by +0.0019 (4/5 seeds). Nothing in the doubt conditions occurred.
 
+## H12 and H13 (added 2026-10-30, after H11 and before any of the runs below; two of the three open questions of the report)
+
+Neither question concerns the main claims; both narrow an unexplained point. Neither result changes a main table.
+
+### H12: where does the Rec@10 gap come from (published 0.0512, measured 0.0487 over three seeds)?
+The released code picks the best epoch by validation NDCG@10 and evaluates on the test set only at those epochs. D1 (more seeds) and D2 (alignment-loss scale) did not explain the gap. New check: retrain the three clean baselines (seeds 2025 to 2027, PyTorch 2.9.1) with `--curve 1`, which records validation and test metrics at every evaluation epoch and changes neither training nor selection; the best epochs must equal the saved ones (480, 410, 470), otherwise the curve run is not used.
+
+*H12a (the epoch rule can produce it).* If the epoch is chosen by test Recall@10 (an oracle that uses the test set; diagnostic only, never adopted), the three-seed mean test Recall@10 reaches at least 0.0512 minus 0.001. This would show that a selection that looks at the test set, or a best-run report, is enough to produce the published value; it would not show that the authors did it.
+
+*H12b (another validation rule does not).* If the epoch is chosen by validation Recall@10, validation NDCG@20 or validation Recall@20 instead, the mean test Recall@10 stays within 0.001 of 0.0487, so the gap is not a matter of which validation metric selects the epoch.
+
+*What would change my reading.* An oracle mean below 0.0502 means even test-set epoch picking does not reach the published value on these checkpoints, and the gap then points to data or features. Whatever the outcome, the gap is described as 'not identified' unless a rule is found that reaches the published value without the test set.
+
+### H13: why does the gate choose text on cold items in the noise-augmented model?
+Known (H6, H7): in the augmented model the gate puts weight 0.99 on text for cold items and 0.44 on warm items; the clean-trained control stays near 0.5 for both. The gate reads the concatenation of the two expert outputs, and only warm items receive training loss, so cold items are out of distribution for the gate. Cold expert outputs have smaller norms (H7). Proposed mechanism: small-norm inputs sit near the origin of the gate's input space, where the gate decides mainly by its bias, and in the augmented model that bias leans to text. Test on saved checkpoints (augmented and clean-trained, seeds 2025 and 2026, PyTorch 2.9.1, clean text), with no training beyond the checkpoints and no new parameters.
+
+*H13a (bias leans to text).* With both expert outputs set to zero, the text-minus-image gate logit of the augmented model is at least +3, and at least 3 higher than the clean-trained control's.
+
+*H13b (norm matters causally).* Scaling each cold item's two expert outputs to the mean norm of the warm items lowers the mean cold text weight of the augmented model from about 0.99 to below 0.8.
+
+*H13c (control).* The same scaling changes the clean-trained control's cold text weight by less than 0.1.
+
+*H13d (norm is not all).* If H13b fails, replacing a cold item's two expert outputs by those of a random warm item (a full replacement) is used to ask whether the gate responds to the position and not only the norm; reported with no prediction.
+
+*What would make me drop the mechanism.* H13a or H13b failing: the norm explanation is then rejected, which narrows the cause but does not name another. The result is a statement about two seeds of one model and is described that way.
+
 ## Protocol commitments
 
 - `γ` is chosen on the validation set (noisy validation, grid {1, 2, 4, 8, 16}); the test set is never used to tune the method. A test-set γ sweep, if shown, is a sensitivity table reported after selection.

@@ -38,6 +38,7 @@ class Session(object):
         self.test_hr = defaultdict(float)
         self.test_recall = defaultdict(float)
         self.best_state = None
+        self.curve = []
 
     def train_epoch(self):
         t = time.time()
@@ -120,6 +121,13 @@ class Session(object):
                             f'Val/recall@{key}', hr[key], self.total_epoch)
                         self.env.w.add_scalar(
                             f'Val/ndcg@{key}', ndcg[key], self.total_epoch)
+                if getattr(self.env.args, 'curve', 0):
+                    # observation only: test metrics at every evaluation epoch, used to ask how the choice of the epoch changes the result
+                    _, c_recall, c_ndcg, _ = self.test(mode='test', top_list=self.env.args.topk)
+                    self.curve.append({'epoch': epoch, 'val_recall': {str(k): float(v) for k, v in recall.items()},
+                                       'val_ndcg': {str(k): float(v) for k, v in ndcg.items()},
+                                       'test_recall': {str(k): float(v) for k, v in c_recall.items()},
+                                       'test_ndcg': {str(k): float(v) for k, v in c_ndcg.items()}})
                 key = list(hr.keys())[0]
                 print(
                     f'epoch = {epoch} hr@{key} = {hr[key]:.5f}, recall@{key} = {recall[key]:.5f}, ndcg@{key} = {ndcg[key]:.5f}, val_time = {val_time:.2f}')
