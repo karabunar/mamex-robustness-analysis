@@ -143,6 +143,9 @@ PYTHONPATH=src python scripts/h14_candidates.py --data_path processed_data_baby/
 PYTHONPATH=src python scripts/h15_decomposition.py --data_path processed_data_baby/cold   # results/h15.md
 PYTHONPATH=src python scripts/h19_dose_response.py                                          # results/h19.md
 PYTHONPATH=src python scripts/h20_trace.py                                                  # results/h20.md
+PYTHONPATH=src python scripts/h21_user_direction.py                                       # results/h21.md
+PYTHONPATH=src python scripts/h22_neighbour_text.py                                       # results/h22.md (needs the Sports checkpoints)
+PYTHONPATH=src python scripts/h23_additivity.py                                           # results/h23.md
 ```
 H16: seeds 2030 to 2034 are retrained with checkpoints (`--save_final 1 --results_dir results/ckpt291`), then `python -m mamex_robustness.repair_cli --data_path processed_data_baby/cold --seed $s --noise_rate 0.4` for each, then `python scripts/h16_ten_seeds.py` (paired bootstrap, 10,000 resamples, seed 0). H17: for seeds 2025 and 2026, `python main.py --data_path processed_data_baby/cold --mode stress_test --seed $s --noise_rate 0.4 --train_noise_rate 0.4 --holdout_warm 0.1 --holdout_probe 1 --suffix h17_aug --results_dir results/h17` and the same with `--train_noise_rate 0.0 --suffix h17_clean`, then `python scripts/h17_table.py`. H18 (a second dataset): `SRC=<folder of the LATTICE Sports files> PY=<python> ./scripts/run_second_dataset.sh` builds the cold split (`scripts/build_cold_dataset.py`, seed 2025, 20% of the items cold), trains three clean baselines with checkpoints, runs the repair evaluation and writes `results/h18_sports.md`. The split is our construction, not the authors' split. The Sports data (about 300 MB) are not in the repository.
 

@@ -1,0 +1,82 @@
+[
+  {
+    "model": "augmented",
+    "seed": 2025,
+    "w_t_cold": 0.9910532236099243,
+    "w_t_warm": 0.4372847378253937,
+    "mean_p_cold": 0.026925746351480484,
+    "mean_p_warm": 0.42730075120925903,
+    "user": {
+      "cold_to_warm": -0.3798474073410034,
+      "warm_to_cold": 0.20165714621543884
+    },
+    "random_mean": {
+      "cold_to_warm": -0.0006326556205749512,
+      "warm_to_cold": 0.0015296638011932373
+    },
+    "random_abs_mean": {
+      "cold_to_warm": 0.0006326556205749512,
+      "warm_to_cold": 0.0015296638011932373
+    }
+  },
+  {
+    "model": "augmented",
+    "seed": 2026,
+    "w_t_cold": 0.981450617313385,
+    "w_t_warm": 0.4353112280368805,
+    "mean_p_cold": 0.12161993235349655,
+    "mean_p_warm": 0.5227389931678772,
+    "user": {
+      "cold_to_warm": -0.1789090633392334,
+      "warm_to_cold": 0.20009544491767883
+    },
+    "random_mean": {
+      "cold_to_warm": -0.0011191844940185546,
+      "warm_to_cold": 0.0023790717124938963
+    },
+    "random_abs_mean": {
+      "cold_to_warm": 0.0011191844940185546,
+      "warm_to_cold": 0.0023790717124938963
+    }
+  },
+  {
+    "model": "clean-trained",
+    "seed": 2025,
+    "w_t_cold": 0.5513193011283875,
+    "w_t_warm": 0.48721468448638916,
+    "mean_p_cold": -0.3825361132621765,
+    "mean_p_warm": -0.13645853102207184,
+    "user": {
+      "cold_to_warm": -0.04239934682846069,
+      "warm_to_cold": 0.035864293575286865
+    },
+    "random_mean": {
+      "cold_to_warm": -0.0010490655899047852,
+      "warm_to_cold": 0.001696556806564331
+    },
+    "random_abs_mean": {
+      "cold_to_warm": 0.001154637336730957,
+      "warm_to_cold": 0.0017213642597198487
+    }
+  },
+  {
+    "model": "clean-trained",
+    "seed": 2026,
+    "w_t_cold": 0.5505092144012451,
+    "w_t_warm": 0.486539363861084,
+    "mean_p_cold": -0.463641494512558,
+    "mean_p_warm": -0.19644863903522491,
+    "user": {
+      "cold_to_warm": -0.04646265506744385,
+      "warm_to_cold": 0.038752853870391846
+    },
+    "random_mean": {
+      "cold_to_warm": 7.076263427734375e-05,
+      "warm_to_cold": 0.0008407652378082276
+    },
+    "random_abs_mean": {
+      "cold_to_warm": 0.00019202232360839843,
+      "warm_to_cold": 0.0008407652378082276
+    }
+  }
+]
