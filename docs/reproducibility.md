@@ -46,7 +46,7 @@ Shapes: 7,050 items; 1,410 cold items; 19,442 training users; `image_feat` 7050Ã
 ## Commands
 ```
 export PYTHONPATH=src
-python -m pytest -q                       # 154 tests, no GPU needed
+python -m pytest -q                       # 158 tests, no GPU needed
 # short real-data check (3 epochs, not a reported result); delete the *_smoketest files it writes in results/
 python main.py --data_path processed_data_baby/cold --mode baseline --seed 1 --epoch 3 --eva_interval 1 --suffix smoketest
 DATA_PATH=processed_data_baby/cold SEEDS="2025 2026 2027" ./scripts/run_experiments.sh   # baseline, stress_test, improved per seed
@@ -135,6 +135,20 @@ done
 python scripts/h12_h13_tables.py   # writes results/h12_h13.md
 ```
 All runs in the pinned environment (`torch==2.9.1`). The augmented training of H13 took about one hour each with five jobs sharing the GPU. The curve flag only records metrics; it does not change training or the choice of epoch.
+
+## Follow-ups on the open points (H14 to H20)
+Training-free analyses on the saved checkpoints (CPU is enough):
+```
+PYTHONPATH=src python scripts/h14_candidates.py --data_path processed_data_baby/cold      # results/h14.md
+PYTHONPATH=src python scripts/h15_decomposition.py --data_path processed_data_baby/cold   # results/h15.md
+PYTHONPATH=src python scripts/h19_dose_response.py                                          # results/h19.md
+PYTHONPATH=src python scripts/h20_trace.py                                                  # results/h20.md
+```
+H16: seeds 2030 to 2034 are retrained with checkpoints (`--save_final 1 --results_dir results/ckpt291`), then `python -m mamex_robustness.repair_cli --data_path processed_data_baby/cold --seed $s --noise_rate 0.4` for each, then `python scripts/h16_ten_seeds.py` (paired bootstrap, 10,000 resamples, seed 0). H17: for seeds 2025 and 2026, `python main.py --data_path processed_data_baby/cold --mode stress_test --seed $s --noise_rate 0.4 --train_noise_rate 0.4 --holdout_warm 0.1 --holdout_probe 1 --suffix h17_aug --results_dir results/h17` and the same with `--train_noise_rate 0.0 --suffix h17_clean`, then `python scripts/h17_table.py`. H18 (a second dataset): `SRC=<folder of the LATTICE Sports files> PY=<python> ./scripts/run_second_dataset.sh` builds the cold split (`scripts/build_cold_dataset.py`, seed 2025, 20% of the items cold), trains three clean baselines with checkpoints, runs the repair evaluation and writes `results/h18_sports.md`. The split is our construction, not the authors' split. The Sports data (about 300 MB) are not in the repository.
+
+Item ids can be mapped to ASINs for the Baby items through the `5-core/item_list.txt` of the LATTICE Baby files (7,050 items); `space/build_items.py` joins them to the 2023 Amazon catalogue for titles and image links (4,353 of the 7,050 items have both) for the item browser of the demo app.
+
+Cost: the five H16 checkpoint runs took 10.6 hours, the four H17 runs 6.9 hours and the three Sports runs 15.1 hours (3 to 5 jobs sharing one GPU). All in the pinned environment (`torch==2.9.1`).
 
 ## Not done
 - Other noise-augmentation designs (rate, prototype scheme, noise on the image side) and other noise types in training.
